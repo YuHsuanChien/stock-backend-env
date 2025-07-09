@@ -30,6 +30,12 @@ export class StockApiService {
     // const accounts = sdk.login("您的身分證號", "您的登入密碼", "您的憑證路徑位置","憑證密碼");  // 若憑證選用＂預設密碼＂, SDK v1.3.2與較新版本適用
 
     this.sdk.initRealtime(); // 建立行情連線
+    if (this.sdk || this.sdk.marketdata) {
+      console.log('SDK 連線成功');
+    } else {
+      console.error('SDK 連線失敗，請檢查設定或憑證');
+      throw new Error('SDK 連線失敗，請檢查設定或憑證');
+    }
   }
 
   async getStockData(symbol: string, from: string, to: string) {
