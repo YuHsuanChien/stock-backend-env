@@ -8,6 +8,8 @@ import {
   MarketType,
 } from 'fubon-neo';
 import { ConfigService } from '@nestjs/config';
+import * as cheerio from 'cheerio';
+import * as iconv from 'iconv-lite';
 
 @Injectable()
 export class StockApiService {
@@ -49,5 +51,44 @@ export class StockApiService {
       to,
       fields: 'open,high,low,close,volume,change',
     });
+  }
+
+  async getStockList() {
+    let urls = [
+      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', // 上市證券
+      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=4', // 上櫃證券
+      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=5', // 興櫃證券
+    ];
+
+    let allStocks: any[] = [];
+
+    for (const url of urls) {
+      const response = await fetch(url);
+      const buffer = await response.arrayBuffer();
+      const text = iconv.decode(Buffer.from(buffer), 'big5');
+      /**
+       * 使用 cheerio 解析 HTML，因為node.js是後端不會有DOM元素可以操作
+       */
+      const $ = cheerio.load(text);
+      const rows = $('table tbody tr');
+
+      rows.each((i, row) => {
+				if(i<2) return; // 跳過前兩行標題行
+        const cells = $(row).find('td');
+        if (cells.length > 0) {
+          const cellText = $(cells[0]).text().trim();
+          const [symbol, companyName] = cellText.split(/\s+/); // 依空白分割
+          const stock = {
+            symbol: symbol,
+            companyName: companyName,
+            industry: $(cells[4]).text().trim(),
+						ipoDate: $(cells[2]).text().trim(),
+          };
+          allStocks.push(stock);
+        }
+      });
+    }
+
+    return allStocks;
   }
 }

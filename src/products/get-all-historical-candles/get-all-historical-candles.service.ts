@@ -6,8 +6,9 @@ export class GetAllHistoricalCandlesService {
   @Inject()
   private readonly stockApiService: StockApiService;
 
-  findAll() {
-    return `This action returns all getAllHistoricalCandles`;
+  async findAll() {
+    let data: any[] = [];
+    return this.stockApiService.getStockList();
   }
 
   async findOne(id: string) {

@@ -1,0 +1,109 @@
+// 股票資料表 (Stocks)
+model Stock {
+  id           Int      @id @default(autoincrement())
+  symbol       String   @unique @db.VarChar(10) // 股票代碼，例如 '2330'
+  companyName  String   @db.VarChar(255) // 公司名稱
+  industry     String?  @db.VarChar(100) // 產業別，可選
+  sector       String?  @db.VarChar(100) // 板塊，可選
+  ipoDate      DateTime? @db.Date         // 上市日期，可選
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // 關聯到日線行情
+  dailyPrices      DailyPrice[]
+  // 關聯到財務報表
+  financialStatements FinancialStatement[]
+  // 關聯到除權息事件
+  dividendSplits   DividendSplit[]
+  // 關聯到新聞事件
+  newsEvents       NewsEvent[]
+
+  @@map("stocks") // 將模型名稱映射到資料庫表名 (小寫複數是慣例)
+}
+
+
+// 日線行情資料表 (Daily_Prices)
+// 主要用於技術線圖分析，因此針對 `stockId` 和 `tradeDate` 建立複合主鍵和索引
+model DailyPrice {
+  id             Int       @id @default(autoincrement()) // 儘管有複合主鍵，Prisma 仍建議使用獨立的 id
+  stockId        Int       // 外鍵，關聯到 Stock
+  tradeDate      DateTime  @db.Date    // 交易日期
+  open           Decimal   @db.Decimal(10, 4) // 開盤價，設定精度
+  high           Decimal   @db.Decimal(10, 4) // 最高價
+  low            Decimal   @db.Decimal(10, 4) // 最低價
+  close          Decimal   @db.Decimal(10, 4) // 收盤價
+  adjustedClose  Decimal   @db.Decimal(10, 4) // 調整後收盤價
+  volume         BigInt    @db.UnsignedBigInt // 成交量，使用 BigInt 避免溢位
+  dividend       Decimal?  @db.Decimal(10, 4) // 當日股息，可選
+  splitFactor    Decimal?  @db.Decimal(10, 4) // 當日分拆係數，可選
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // 建立與 Stock 的關聯
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  // 複合索引，用於加速根據股票 ID 和日期範圍的查詢
+  @@unique([stockId, tradeDate]) // 確保每支股票每天只有一筆日線資料
+  @@index([tradeDate])           // 額外為 tradeDate 建立索引，以便進行日期範圍查詢或跨股票日期查詢
+  @@map("daily_prices")
+}
+
+// 財務報表資料表 (Financial_Statements)
+model FinancialStatement {
+  id            Int      @id @default(autoincrement())
+  stockId       Int
+  reportDate    DateTime @db.Date // 財報結算日期
+  reportType    String   @db.VarChar(20) // 財報類型 (Quarterly, Annually)
+  revenue       BigInt   @db.UnsignedBigInt // 營業收入
+  netIncome     BigInt   @db.BigInt   // 淨利 (可能為負)
+  eps           Decimal? @db.Decimal(10, 4) // 每股盈餘
+  assets        BigInt   @db.UnsignedBigInt // 資產總額
+  liabilities   BigInt   @db.UnsignedBigInt // 負債總額
+  equity        BigInt   @db.UnsignedBigInt // 股東權益
+  // 您可以根據需求增加更多財務指標
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  @@unique([stockId, reportDate, reportType]) // 確保同一股票同一日期和類型只有一份財報
+  @@map("financial_statements")
+}
+
+// 除權息資料表 (Dividends_Splits)
+model DividendSplit {
+  id               Int      @id @default(autoincrement())
+  stockId          Int
+  exDate           DateTime @db.Date    // 除權息交易日
+  recordDate       DateTime? @db.Date   // 記錄日，可選
+  paymentDate      DateTime? @db.Date   // 股息發放日，可選
+  dividendPerShare Decimal? @db.Decimal(10, 4) // 每股股息
+  splitRatio       Decimal? @db.Decimal(10, 4) // 股票分拆比例 (例如：2 for 1 為 2.0)
+  eventType        String   @db.VarChar(20) // 事件類型 (Dividend, Split)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id])
+
+  @@unique([stockId, exDate, eventType]) // 確保同一股票同一除權息日同一類型事件只有一筆
+  @@map("dividends_splits")
+}
+
+// 新聞與事件資料表 (News_Events)
+model NewsEvent {
+  id             Int       @id @default(autoincrement())
+  stockId        Int?      // 可選，如果新聞與特定股票相關
+  publishDate    DateTime  // 發布日期時間
+  title          String    @db.VarChar(500) // 新聞標題
+  url            String?   @db.VarChar(255) // 新聞連結，可選
+  source         String?   @db.VarChar(100) // 新聞來源，可選
+  contentSummary String?   @db.Text         // 新聞內容摘要，可選
+  sentiment      String?   @db.VarChar(20)  // 新聞情感分析結果 (Positive, Negative, Neutral)，可選
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // 如果 stockId 不為空，則建立關聯
+  stock Stock? @relation(fields: [stockId], references: [id])
+
+  @@index([publishDate]) // 根據發布日期查詢新聞會很頻繁
+  @@map("news_events")
+}

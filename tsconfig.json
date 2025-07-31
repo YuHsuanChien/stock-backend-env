@@ -16,7 +16,7 @@
 			"@config/*": [ "config/*" ],
 			"@guards/*": [ "guards/*" ],
 			"@products/*": [ "products/*" ],
-			"@dbservice/*": [ "dbservice/*" ],
+			"@database/*": [ "database/*" ],
 		},
 		"incremental": true,
 		"skipLibCheck": true,

@@ -1,9 +1,19 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Inject,
+} from '@nestjs/common';
 import { GetAllHistoricalCandlesService } from './get-all-historical-candles.service';
 
-@Controller('get-all-historical-candles')
+@Controller('historical-candles')
 export class GetAllHistoricalCandlesController {
-  constructor(private readonly getAllHistoricalCandlesService: GetAllHistoricalCandlesService) {}
+  @Inject()
+  private readonly getAllHistoricalCandlesService: GetAllHistoricalCandlesService;
 
   @Get()
   findAll() {
