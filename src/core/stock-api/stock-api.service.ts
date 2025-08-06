@@ -53,6 +53,11 @@ export class StockApiService {
     });
   }
 
+	/**
+	 * 獲取股票列表
+	 * @returns {Promise<any[]>} 返回股票列表
+	 * @returns { symbol: string; companyName: string; industry: string; ipoDate: string }[]
+	 */
   async getStockList() {
     let urls = [
       'https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', // 上市證券

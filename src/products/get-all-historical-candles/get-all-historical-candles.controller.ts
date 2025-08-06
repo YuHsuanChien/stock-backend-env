@@ -20,8 +20,12 @@ export class GetAllHistoricalCandlesController {
     return this.getAllHistoricalCandlesService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.getAllHistoricalCandlesService.findOne(id);
+  @Post(':id')
+  findOne(
+    @Param('id') id: string,
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+  ) {
+    return this.getAllHistoricalCandlesService.findOne(id,startDate, endDate);
   }
 }

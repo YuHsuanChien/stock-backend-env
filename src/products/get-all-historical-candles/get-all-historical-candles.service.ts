@@ -11,7 +11,14 @@ export class GetAllHistoricalCandlesService {
     return this.stockApiService.getStockList();
   }
 
-  async findOne(id: string) {
+  /**
+   * 獲取指定股票的歷史K線資料
+   * @param id 股票代碼
+   * @param startDate 起始日期
+   * @param endDate 結束日期
+   * @returns { symbol: string; type: string; exchange: string; market: string; data: any[] } | null
+   */
+  async findOne(id: string, startDate: string, endDate: string) {
     let data: {
       symbol: string;
       type: string;
@@ -20,39 +27,72 @@ export class GetAllHistoricalCandlesService {
       data: any[];
     } | null = null;
 
-    let startYear = 2015;
-    const nowYear = new Date().getFullYear();
+    const nowYear = new Date();
+    let currentYear = new Date(startDate).getFullYear();
+    const endYear = new Date(endDate).getFullYear();
 
-    while (startYear <= nowYear) {
-      const startDate = `${startYear}-01-01`;
-      const endDate = `${startYear}-12-31`;
+    console.log(
+      `查詢股票: ${id}, 起始年: ${currentYear}, 結束年: ${endYear}, 現在年: ${nowYear.getFullYear()}`,
+    );
+
+    while (currentYear <= nowYear.getFullYear() && currentYear <= endYear) {
+      // 計算每次查詢的起訖日
+      let yearStartDate = `${currentYear}-01-01`;
+      let yearEndDate = `${currentYear}-12-31`;
+
+      if (currentYear === new Date(startDate).getFullYear()) {
+        yearStartDate = startDate;
+      }
+      if (currentYear === new Date(endDate).getFullYear()) {
+        yearEndDate = endDate;
+      }
+
+      console.log(
+        `請求年份: ${currentYear}, 日期區間: ${yearStartDate} ~ ${yearEndDate}`,
+      );
 
       const res = await this.stockApiService.getStockData(
         id,
-        startDate,
-        endDate,
+        yearStartDate,
+        yearEndDate,
       );
 
       if (data && data.data) {
-        // 如果已經有 data，就把當年資料加進去
         res.data.forEach((item: any) => {
           data!.data.push(item);
         });
+        console.log(
+          `年份 ${currentYear} 取得 ${res.data.length} 筆資料，累計 ${data.data.length} 筆`,
+        );
       } else {
-        // 初始化第一筆
         data = res;
+        console.log(
+          `年份 ${currentYear} 初始化資料，取得 ${res.data.length} 筆`,
+        );
       }
 
-      startYear++;
+      currentYear++;
     }
 
     if (data && data.data.length > 0) {
-      // 將資料按照時間排序
       data.data.sort((a: any, b: any) => {
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
+      // 轉換格式
+      const symbol = data.symbol;
+      const mapped = data.data.map((item: any) => ({
+        symbol,
+        date: new Date(item.date),
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume,
+      }));
+      return mapped;
+    } else {
+      console.log('查無資料');
+			return [];
     }
-
-    return data;
   }
 }
