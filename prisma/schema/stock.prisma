@@ -4,8 +4,8 @@ model Stock {
   symbol       String   @unique @db.VarChar(10) // 股票代碼，例如 '2330'
   companyName  String   @db.VarChar(255) // 公司名稱
   industry     String?  @db.VarChar(100) // 產業別，可選
+	industryName String?  @db.VarChar(100) // 產業名稱，可選
   sector       String?  @db.VarChar(100) // 板塊，可選
-  ipoDate      DateTime? @db.Date         // 上市日期，可選
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   // 關聯到日線行情

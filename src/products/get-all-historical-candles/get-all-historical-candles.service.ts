@@ -1,14 +1,31 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { StockApiService } from '@core/stock-api/stock-api.service';
+import { DatabaseService } from '@database/database.service';
 
 @Injectable()
 export class GetAllHistoricalCandlesService {
   @Inject()
   private readonly stockApiService: StockApiService;
 
+  @Inject()
+  private readonly databaseService: DatabaseService;
+
   async findAll() {
-    let data: any[] = [];
-    return this.stockApiService.getStockList();
+    // 獲取所有股票列表
+    const stockList = await this.stockApiService.getStockList();
+    //寫進db stocks裡
+    if (!stockList || stockList.length === 0) {
+      console.log('沒有股票資料可供查詢');
+      return [];
+    } else {
+      console.log(`共有 ${stockList.length} 支股票資料`);
+			// 將股票列表寫入資料庫
+      this.databaseService.stock.createMany({
+        data: stockList,
+        skipDuplicates: true, // 避免重複插入
+      });
+      return stockList;
+    }
   }
 
   /**

@@ -1,15 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  FubonSDK,
-  BSAction,
-  TimeInForce,
-  OrderType,
-  PriceType,
-  MarketType,
-} from 'fubon-neo';
+import { FubonSDK } from 'fubon-neo';
 import { ConfigService } from '@nestjs/config';
-import * as cheerio from 'cheerio';
-import * as iconv from 'iconv-lite';
+
+export interface stockList {
+  symbol: string;
+  companyName: string;
+  industry: string;
+  industryName: string;
+}
 
 @Injectable()
 export class StockApiService {
@@ -40,6 +38,13 @@ export class StockApiService {
     }
   }
 
+  /**
+   * 獲取指定股票的歷史數據(包括開盤價、最高價、最低價、收盤價、成交量等)
+   * @param symbol 股票代碼
+   * @param from 從什麼時候開始
+   * @param to 到什麼時候
+   * @returns
+   */
   async getStockData(symbol: string, from: string, to: string) {
     if (!this.sdk || !this.sdk.marketdata) {
       throw new Error('SDK 尚未初始化或 marketdata 不存在');
@@ -66,44 +71,143 @@ export class StockApiService {
   /**
    * 獲取股票列表
    * @returns {Promise<any[]>} 返回股票列表
-   * @returns { symbol: string; companyName: string; industry: string; ipoDate: string }[]
    */
-  async getStockList() {
-    let urls = [
-      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', // 上市證券
-      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=4', // 上櫃證券
-      'https://isin.twse.com.tw/isin/C_public.jsp?strMode=5', // 興櫃證券
-    ];
+  async getStockList(): Promise<any[]> {
+    const allStocks: Array<stockList> = []; // 改名避免衝突
 
-    let allStocks: any[] = [];
-
-    for (const url of urls) {
-      const response = await fetch(url);
-      const buffer = await response.arrayBuffer();
-      const text = iconv.decode(Buffer.from(buffer), 'big5');
-      /**
-       * 使用 cheerio 解析 HTML，因為node.js是後端不會有DOM元素可以操作
-       */
-      const $ = cheerio.load(text);
-      const rows = $('table tbody tr');
-
-      rows.each((i, row) => {
-        if (i < 2) return; // 跳過前兩行標題行
-        const cells = $(row).find('td');
-        if (cells.length > 0) {
-          const cellText = $(cells[0]).text().trim();
-          const [symbol, companyName] = cellText.split(/\s+/); // 依空白分割
-          const stock = {
-            symbol: symbol,
-            companyName: companyName,
-            industry: $(cells[4]).text().trim(),
-            ipoDate: $(cells[2]).text().trim(),
-          };
-          allStocks.push(stock);
-        }
-      });
+    if (!this.sdk || !this.sdk.marketdata) {
+      throw new Error('SDK 尚未初始化或 marketdata 不存在');
     }
 
-    return allStocks;
+    const industries = [
+      '01',
+      '02',
+      '03',
+      '04',
+      '05',
+      '06',
+      '08',
+      '09',
+      '10',
+      '11',
+      '12',
+      '14',
+      '15',
+      '16',
+      '17',
+      '19',
+      '20',
+      '21',
+      '22',
+      '23',
+      '24',
+      '25',
+      '26',
+      '27',
+      '28',
+      '29',
+      '30',
+      '31',
+      '32',
+      '33',
+      '35',
+      '36',
+      '37',
+      '38',
+      '80',
+    ];
+
+    const client = this.sdk.marketdata.restClient;
+
+    try {
+      // 使用 for...of 迴圈來正確處理非同步操作
+      for (const industryCode of industries) {
+        try {
+          console.log(`正在獲取產業別 ${industryCode} 的股票資料...`);
+
+          const apiResponse = await client.stock.intraday.tickers({
+            // 改名避免衝突
+            type: 'EQUITY',
+            exchange: 'TWSE',
+            isNormal: true,
+            industry: industryCode,
+          });
+
+
+          if (apiResponse.data && Array.isArray(apiResponse.data)) {
+            apiResponse.data.forEach((stock: any) => {
+              const stockData = {
+                symbol: stock.symbol,
+                companyName: stock.name || stock.companyName || '', // API 可能返回 name 而不是 companyName
+                industry: industryCode, // 使用查詢的產業代碼
+                industryName: this.getIndustryName(industryCode), // 加入產業名稱
+              };
+              allStocks.push(stockData); // 推入外層陣列
+            });
+
+            console.log(
+              `產業別 ${industryCode} 獲取到 ${apiResponse.data.length} 支股票`,
+            );
+          }
+
+          // 避免 API 請求過於頻繁
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (industryError) {
+          console.error(`獲取產業別 ${industryCode} 資料失敗:`, industryError);
+          // 繼續處理下一個產業別
+        }
+      }
+
+      console.log(`總共獲取到 ${allStocks.length} 支股票`);
+      return allStocks;
+    } catch (err) {
+      console.error(`[getStockList] 發生錯誤:`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * 根據產業別代碼獲取產業別名稱
+   */
+  private getIndustryName(industryCode: string): string {
+    const industryMap: { [key: string]: string } = {
+      '01': '水泥工業',
+      '02': '食品工業',
+      '03': '塑膠工業',
+      '04': '紡織纖維',
+      '05': '電機機械',
+      '06': '電器電纜',
+      '08': '玻璃陶瓷',
+      '09': '造紙工業',
+      '10': '鋼鐵工業',
+      '11': '橡膠工業',
+      '12': '汽車工業',
+      '14': '建材營造',
+      '15': '航運業',
+      '16': '觀光餐旅',
+      '17': '金融保險',
+      '19': '綜合',
+      '20': '其他',
+      '21': '化學工業',
+      '22': '生技醫療業',
+      '23': '油電燃氣業',
+      '24': '半導體業',
+      '25': '電腦及週邊設備業',
+      '26': '光電業',
+      '27': '通信網路業',
+      '28': '電子零組件業',
+      '29': '電子通路業',
+      '30': '資訊服務業',
+      '31': '其他電子業',
+      '32': '文化創意業',
+      '33': '農業科技業',
+      '35': '綠能環保',
+      '36': '數位雲端',
+      '37': '運動休閒',
+      '38': '居家生活',
+      '80': '管理股票',
+    };
+
+    return industryMap[industryCode] || '未知產業';
   }
 }
