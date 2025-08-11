@@ -45,19 +45,29 @@ export class StockApiService {
       throw new Error('SDK 尚未初始化或 marketdata 不存在');
     }
     const client = this.sdk.marketdata.restClient;
-    return await client.stock.historical.candles({
-      symbol,
-      from,
-      to,
-      fields: 'open,high,low,close,volume,change',
-    });
+    try {
+      const result = await client.stock.historical.candles({
+        symbol,
+        from,
+        to,
+        fields: 'open,high,low,close,volume,change',
+      });
+      console.log(
+        `[getStockData] 回傳資料:`,
+        JSON.stringify(result)?.slice(0, 500),
+      ); // 只顯示前500字
+      return result;
+    } catch (error) {
+      console.error(`[getStockData] 發生錯誤:`, error);
+      throw error;
+    }
   }
 
-	/**
-	 * 獲取股票列表
-	 * @returns {Promise<any[]>} 返回股票列表
-	 * @returns { symbol: string; companyName: string; industry: string; ipoDate: string }[]
-	 */
+  /**
+   * 獲取股票列表
+   * @returns {Promise<any[]>} 返回股票列表
+   * @returns { symbol: string; companyName: string; industry: string; ipoDate: string }[]
+   */
   async getStockList() {
     let urls = [
       'https://isin.twse.com.tw/isin/C_public.jsp?strMode=2', // 上市證券
@@ -78,7 +88,7 @@ export class StockApiService {
       const rows = $('table tbody tr');
 
       rows.each((i, row) => {
-				if(i<2) return; // 跳過前兩行標題行
+        if (i < 2) return; // 跳過前兩行標題行
         const cells = $(row).find('td');
         if (cells.length > 0) {
           const cellText = $(cells[0]).text().trim();
@@ -87,7 +97,7 @@ export class StockApiService {
             symbol: symbol,
             companyName: companyName,
             industry: $(cells[4]).text().trim(),
-						ipoDate: $(cells[2]).text().trim(),
+            ipoDate: $(cells[2]).text().trim(),
           };
           allStocks.push(stock);
         }

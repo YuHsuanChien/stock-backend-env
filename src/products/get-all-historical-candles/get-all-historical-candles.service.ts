@@ -12,7 +12,8 @@ export class GetAllHistoricalCandlesService {
   }
 
   /**
-   * 獲取指定股票的歷史K線資料
+   * 獲取指定股票的歷史數據(包括開盤價、最高價、最低價、收盤價、成交量等)
+   * 富邦指定每次只能抓取一年的資料，因此需要循環查詢每年資料
    * @param id 股票代碼
    * @param startDate 起始日期
    * @param endDate 結束日期
@@ -92,7 +93,7 @@ export class GetAllHistoricalCandlesService {
       return mapped;
     } else {
       console.log('查無資料');
-			return [];
+      return [];
     }
   }
 }
