@@ -1,7 +1,0 @@
-[2025-06-24 00:30:26.492722700 +08:00 INFO] [login] personal_id="*"
-[2025-06-24 00:31:04.935110900 +08:00 INFO] [login] personal_id="A230270648"
-[2025-06-24 00:31:04.961247900 +08:00 INFO] this account require 2fa
-[2025-06-24 00:31:05.064165900 +08:00 INFO] [future_option_mapping]: 72.0557ms
-[2025-06-24 00:31:05.099016500 +08:00 INFO] [future_option_mapping]: 27.8812ms
-[2025-06-24 00:31:05.216063800 +08:00 INFO] [future_option_mapping]: 115.9701ms
-[2025-06-24 00:31:05.253617800 +08:00 INFO] [future_option_mapping]: 27.7502ms
