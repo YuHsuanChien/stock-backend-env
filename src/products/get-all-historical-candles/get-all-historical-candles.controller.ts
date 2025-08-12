@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Inject,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Inject } from '@nestjs/common';
 import { GetAllHistoricalCandlesService } from './get-all-historical-candles.service';
 
 @Controller('historical-candles')
@@ -26,6 +17,6 @@ export class GetAllHistoricalCandlesController {
     @Body('startDate') startDate: string,
     @Body('endDate') endDate: string,
   ) {
-    return this.getAllHistoricalCandlesService.findOne(id,startDate, endDate);
+    return this.getAllHistoricalCandlesService.findOne(id, startDate, endDate);
   }
 }

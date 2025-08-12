@@ -5,7 +5,7 @@ model Stock {
   companyName  String   @db.VarChar(255) // 公司名稱
   industry     String?  @db.VarChar(100) // 產業別，可選
 	industryName String?  @db.VarChar(100) // 產業名稱，可選
-  sector       String?  @db.VarChar(100) // 板塊，可選
+  market       String   @db.VarChar(50) // 市場名稱，例如 '上市' 或 '上櫃' 或 '興櫃'
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   // 關聯到日線行情

@@ -9,7 +9,9 @@ describe('GetAllHistoricalCandlesService', () => {
       providers: [GetAllHistoricalCandlesService],
     }).compile();
 
-    service = module.get<GetAllHistoricalCandlesService>(GetAllHistoricalCandlesService);
+    service = module.get<GetAllHistoricalCandlesService>(
+      GetAllHistoricalCandlesService,
+    );
   });
 
   it('should be defined', () => {

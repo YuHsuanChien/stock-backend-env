@@ -7,6 +7,7 @@ export interface stockList {
   companyName: string;
   industry: string;
   industryName: string;
+  market: string;
 }
 
 @Injectable()
@@ -117,44 +118,56 @@ export class StockApiService {
       '80',
     ];
 
+    const markets = [
+      { code: 'TSE', name: '上市', exchange: 'TWSE' },
+      { code: 'OTC', name: '上櫃', exchange: 'TPEx' },
+      { code: 'ESB', name: '興櫃一般板', exchange: 'TPEx' },
+      { code: 'PSB', name: '興櫃戰略新板', exchange: 'TPEx' }, // 新增戰略新板
+    ];
+
     const client = this.sdk.marketdata.restClient;
 
     try {
       // 使用 for...of 迴圈來正確處理非同步操作
       for (const industryCode of industries) {
-        try {
-          console.log(`正在獲取產業別 ${industryCode} 的股票資料...`);
+        for (const market of markets) {
+          try {
+            console.log(`正在獲取產業別 ${industryCode} 的股票資料...`);
 
-          const apiResponse = await client.stock.intraday.tickers({
-            // 改名避免衝突
-            type: 'EQUITY',
-            exchange: 'TWSE',
-            isNormal: true,
-            industry: industryCode,
-          });
-
-
-          if (apiResponse.data && Array.isArray(apiResponse.data)) {
-            apiResponse.data.forEach((stock: any) => {
-              const stockData = {
-                symbol: stock.symbol,
-                companyName: stock.name || stock.companyName || '', // API 可能返回 name 而不是 companyName
-                industry: industryCode, // 使用查詢的產業代碼
-                industryName: this.getIndustryName(industryCode), // 加入產業名稱
-              };
-              allStocks.push(stockData); // 推入外層陣列
+            const apiResponse = await client.stock.intraday.tickers({
+              // 改名避免衝突
+              type: 'EQUITY',
+              exchange: market.exchange, // ← 使用對應的交易所
+              market: market.code,
+              industry: industryCode,
             });
 
-            console.log(
-              `產業別 ${industryCode} 獲取到 ${apiResponse.data.length} 支股票`,
-            );
-          }
+            if (apiResponse.data && Array.isArray(apiResponse.data)) {
+              apiResponse.data.forEach((stock: any) => {
+                const stockData = {
+                  symbol: stock.symbol,
+                  companyName: stock.name, // API 可能返回 name 而不是 companyName
+                  industry: industryCode, // 使用查詢的產業代碼
+                  industryName: this.getIndustryName(industryCode), // 加入產業名稱
+                  market: market.name, // 加入市場名稱
+                };
+                allStocks.push(stockData); // 推入外層陣列
+              });
 
-          // 避免 API 請求過於頻繁
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        } catch (industryError) {
-          console.error(`獲取產業別 ${industryCode} 資料失敗:`, industryError);
-          // 繼續處理下一個產業別
+              console.log(
+                `產業別 ${industryCode} 獲取到 ${apiResponse.data.length} 支股票`,
+              );
+            }
+
+            // 避免 API 請求過於頻繁
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          } catch (industryError) {
+            console.error(
+              `獲取產業別 ${industryCode} 資料失敗:`,
+              industryError,
+            );
+            // 繼續處理下一個產業別
+          }
         }
       }
 

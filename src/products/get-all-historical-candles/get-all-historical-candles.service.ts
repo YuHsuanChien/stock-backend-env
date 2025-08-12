@@ -19,8 +19,10 @@ export class GetAllHistoricalCandlesService {
       return [];
     } else {
       console.log(`共有 ${stockList.length} 支股票資料`);
-			// 將股票列表寫入資料庫
-      this.databaseService.stock.createMany({
+      // 清除整張 stock table
+      await this.databaseService.stock.deleteMany({});
+      // 將股票列表寫入資料庫
+      await this.databaseService.stock.createMany({
         data: stockList,
         skipDuplicates: true, // 避免重複插入
       });
