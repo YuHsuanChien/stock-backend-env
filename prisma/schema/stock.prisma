@@ -27,14 +27,11 @@ model DailyPrice {
   id             Int       @id @default(autoincrement()) // 儘管有複合主鍵，Prisma 仍建議使用獨立的 id
   stockId        Int       // 外鍵，關聯到 Stock
   tradeDate      DateTime  @db.Date    // 交易日期
-  open           Decimal   @db.Decimal(10, 4) // 開盤價，設定精度
-  high           Decimal   @db.Decimal(10, 4) // 最高價
-  low            Decimal   @db.Decimal(10, 4) // 最低價
-  close          Decimal   @db.Decimal(10, 4) // 收盤價
-  adjustedClose  Decimal   @db.Decimal(10, 4) // 調整後收盤價
-  volume         BigInt    @db.UnsignedBigInt // 成交量，使用 BigInt 避免溢位
-  dividend       Decimal?  @db.Decimal(10, 4) // 當日股息，可選
-  splitFactor    Decimal?  @db.Decimal(10, 4) // 當日分拆係數，可選
+  open           Decimal?   @db.Decimal(10, 4) // 開盤價，設定精度
+  high           Decimal?   @db.Decimal(10, 4) // 最高價
+  low            Decimal?   @db.Decimal(10, 4) // 最低價
+  close          Decimal?   @db.Decimal(10, 4) // 收盤價
+  volume         BigInt?    @db.UnsignedBigInt // 成交量，使用 BigInt 避免溢位
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

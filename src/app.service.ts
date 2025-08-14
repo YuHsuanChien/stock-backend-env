@@ -1,8 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { StockApiService } from '@core/stock-api/stock-api.service';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
-export class AppService {
-  @Inject()
-  private readonly stockApiService: StockApiService;
-}
+export class AppService {}

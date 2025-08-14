@@ -17,6 +17,7 @@
 			"@guards/*": [ "guards/*" ],
 			"@products/*": [ "products/*" ],
 			"@database/*": [ "database/*" ],
+			"@interfaces/*": [ "interfaces/*" ]
 		},
 		"incremental": true,
 		"skipLibCheck": true,
