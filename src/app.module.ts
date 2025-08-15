@@ -4,12 +4,14 @@ import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
 import bankLogin from './config/bankLogin.config';
 import { GetAllHistoricalCandlesModule } from '@products/get-all-historical-candles/get-all-historical-candles.module';
+import { BacktestModule } from '@products/backtest/backtest.module';
 import { DatabaseModule } from '@database/database.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     GetAllHistoricalCandlesModule,
+    BacktestModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [bankLogin],
