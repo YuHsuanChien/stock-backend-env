@@ -109,7 +109,7 @@ export class SnapshotService {
       //把最終資料寫進pricedaily table
       await this.databaseService.dailyPrice.createMany({
         data: finishData,
-        skipDuplicates: true, // 避免重複插入
+        skipDuplicates: true, // 避免重複插入，判斷重複的方法是在 dailyPrice 表中已經存在的 stockId 和 tradeDate(prisma裡有設定唯一索引)
       });
     }
     return finishData;

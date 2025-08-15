@@ -19,7 +19,7 @@ import { SnapshotService } from '@core/stock/snapshot.service';
 export class GetAllHistoricalCandlesService {
   // 批次處理設定
   private readonly BATCH_SIZE = 5; // 每批次處理5支股票
-  private readonly BATCH_DELAY = 130000; // 批次間隔時間 (2分10秒)
+  private readonly BATCH_DELAY = 75000; // 批次間隔時間 (75秒)
   private readonly DEFAULT_START_DATE = '2015-01-01'; // 預設起始日期
   @Inject()
   private readonly processingStatusService: ProcessingStatusService;
@@ -133,7 +133,7 @@ export class GetAllHistoricalCandlesService {
 
         // 如果不是最後一批，等待一段時間再處理下一批
         if (i + this.BATCH_SIZE < stockSymbolsArray.length) {
-          console.log('等待 2 分 10 秒後處理下一批次...');
+          console.log('等待 1 分 15 秒後處理下一批次...');
           await this.delay(this.BATCH_DELAY);
         }
       }
