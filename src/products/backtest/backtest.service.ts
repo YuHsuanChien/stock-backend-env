@@ -139,20 +139,25 @@ export class BacktestService {
                 (1000 * 60 * 60 * 24),
             );
 
-            // 記錄交易
+            // 統一格式，所有欄位齊全
             trades.push({
-              stock,
-              action: 'sell',
+              stock: stock,
+              action: 'SELL',
               date: currentDate,
               price: current.open,
               quantity: position.quantity,
               amount: sellAmount,
-              sellSignalDate: sellOrder.signalDate,
+              buySignalDate: position.buySignalDate ?? undefined,
+              sellSignalDate: sellOrder.signalDate ?? undefined,
+              actualBuyDate: position.entryDate ?? undefined,
               actualSellDate: currentDate,
-              profit,
-              profitRate,
-              holdingDays,
-              reason: sellOrder.reason,
+              entryPrice: position.entryPrice ?? undefined,
+              entryDate: position.entryDate ?? undefined,
+              holdingDays: holdingDays ?? undefined,
+              profit: profit ?? undefined,
+              profitRate: profitRate ?? undefined,
+              reason: sellOrder.reason ?? '',
+              confidence: position.confidence ?? undefined,
             });
 
             currentCapital += sellAmount;
@@ -198,17 +203,25 @@ export class BacktestService {
               positions[stock] = position;
               currentCapital -= actualInvestAmount;
 
+              // 統一格式，所有欄位齊全
               trades.push({
-                stock,
-                action: 'buy',
+                stock: stock,
+                action: 'BUY',
                 date: currentDate,
                 price: current.open,
-                quantity,
+                quantity: quantity,
                 amount: actualInvestAmount,
-                buySignalDate: buyOrder.signalDate,
+                buySignalDate: buyOrder.signalDate ?? undefined,
+                sellSignalDate: undefined,
                 actualBuyDate: currentDate,
-                reason: buyOrder.reason,
-                confidence: buyOrder.confidence,
+                actualSellDate: undefined,
+                entryPrice: current.open,
+                entryDate: currentDate,
+                holdingDays: undefined,
+                profit: undefined,
+                profitRate: undefined,
+                reason: buyOrder.reason ?? '',
+                confidence: buyOrder.confidence ?? undefined,
               });
 
               console.log(
