@@ -13,8 +13,16 @@ export class GetAllHistoricalCandlesController {
    * @returns 回傳處理狀態
    */
   @Get()
-  findAll() {
-    return this.getAllHistoricalCandlesService.findAll();
+  createAll() {
+    return this.getAllHistoricalCandlesService.createAll();
+  }
+
+  /**
+   * 取得所有股票清單
+   */
+  @Get('stockList')
+  findAllList() {
+    return this.getAllHistoricalCandlesService.findAllList();
   }
 
   /**
@@ -36,19 +44,51 @@ export class GetAllHistoricalCandlesController {
   }
 
   /**
-   * 取得單隻股票的歷史K線資料
+   * 查詢單隻股票的歷史K線資料
+   */
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.getAllHistoricalCandlesService.findOne(id);
+  }
+
+  /**
+   * 寫入單隻股票的歷史K線資料
    * @param id 股票ID
    * @param startDate 開始日期
    * @param endDate 結束日期
    * @returns
    */
   @Post(':id')
-  findOne(
+  createOne(
     @Param('id') id: string,
     @Body('startDate') startDate: string,
     @Body('endDate') endDate: string,
   ) {
     console.log(id, startDate, endDate);
-    return this.getAllHistoricalCandlesService.findOne(id, startDate, endDate);
+    return this.getAllHistoricalCandlesService.createOne(
+      id,
+      startDate,
+      endDate,
+    );
+  }
+
+  /**
+   * 查詢單隻股票的期間歷史K線資料
+   * @param id 股票ID
+   * @param startDate 開始日期
+   * @param endDate 結束日期
+   * @returns
+   */
+  @Post('duration/:id')
+  findOneDateToDate(
+    @Param('id') id: string,
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+  ) {
+    return this.getAllHistoricalCandlesService.findOneDuration(
+      id,
+      startDate,
+      endDate,
+    );
   }
 }

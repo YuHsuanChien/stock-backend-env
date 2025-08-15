@@ -15,6 +15,115 @@ export class StockPriceService {
   ) {}
 
   /**
+   * 獲取指定股票的歷史價格數據
+   * @param symbol 股票代碼
+   * @returns Promise<StockPriceData[]> 股票價格數據陣列
+   */
+  async fetchStockHistory(symbol: string): Promise<StockPriceData[]> {
+    // 查找股票在資料庫中的 ID
+    const stockRecord = await this.databaseService.stock.findUnique({
+      where: { symbol },
+      select: { id: true },
+    });
+
+    if (!stockRecord) {
+      console.error(`股票代碼 ${symbol} 在資料庫中不存在`);
+      throw new Error(`股票代碼 ${symbol} 在資料庫中不存在`);
+    }
+
+    const stockId = stockRecord.id;
+    const rawData = await this.databaseService.dailyPrice.findMany({
+      where: { stockId },
+      select: {
+        stockId: true,
+        tradeDate: true,
+        open: true,
+        high: true,
+        low: true,
+        close: true,
+        volume: true,
+      },
+    });
+
+    // 轉換資料類型以符合 StockPriceData 介面
+    const data: StockPriceData[] = rawData.map((item) => ({
+      stockId: item.stockId,
+      tradeDate: item.tradeDate,
+      open: item.open ? Number(item.open) : 0,
+      high: item.high ? Number(item.high) : 0,
+      low: item.low ? Number(item.low) : 0,
+      close: item.close ? Number(item.close) : 0,
+      volume: item.volume ? Number(item.volume) : 0,
+    }));
+
+    if (data.length > 0) {
+      console.log(`股票 ${symbol} 成功查詢 ${data.length} 筆歷史數據`);
+    } else {
+      console.log(`股票 ${symbol} 在指定期間內無可用資料`);
+    }
+
+    return data;
+  }
+
+  /**
+   * 獲取指定股票的歷史價格數據
+   * @param symbol 股票代碼
+   * @returns Promise<StockPriceData[]> 股票價格數據陣列
+   */
+  async fetchStockDurationHistory(
+    symbol: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<StockPriceData[]> {
+    // 查找股票在資料庫中的 ID
+    const stockRecord = await this.databaseService.stock.findUnique({
+      where: { symbol },
+      select: { id: true },
+    });
+
+    if (!stockRecord) {
+      console.error(`股票代碼 ${symbol} 在資料庫中不存在`);
+      throw new Error(`股票代碼 ${symbol} 在資料庫中不存在`);
+    }
+
+    const stockId = stockRecord.id;
+    const rawData = await this.databaseService.dailyPrice.findMany({
+      where: {
+        stockId,
+        tradeDate: { gte: new Date(startDate), lte: new Date(endDate) },
+      },
+      select: {
+        stockId: true,
+        tradeDate: true,
+        open: true,
+        high: true,
+        low: true,
+        close: true,
+        volume: true,
+      },
+    });
+
+    // 轉換資料類型以符合 StockPriceData 介面
+    const data: StockPriceData[] = rawData.map((item) => ({
+      stockId: item.stockId,
+      tradeDate: item.tradeDate,
+      open: item.open ? Number(item.open) : 0,
+      high: item.high ? Number(item.high) : 0,
+      low: item.low ? Number(item.low) : 0,
+      close: item.close ? Number(item.close) : 0,
+      volume: item.volume ? Number(item.volume) : 0,
+    }));
+
+    if (data.length > 0) {
+      console.log(`股票 ${symbol} 成功查詢 ${data.length} 筆歷史數據`);
+    } else {
+      console.log(`股票 ${symbol} 在指定期間內無可用資料`);
+    }
+
+    return data;
+  }
+
+  /**
    * 獲取指定股票的歷史價格數據並存入資料庫
    * 由於富邦 API 限制，每次只能抓取一年的資料，因此需要循環查詢
    * @param symbol 股票代碼

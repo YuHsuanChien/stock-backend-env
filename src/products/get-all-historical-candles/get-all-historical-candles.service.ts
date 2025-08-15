@@ -41,7 +41,7 @@ export class GetAllHistoricalCandlesService {
    * 4. 開始背景批次處理
    * @returns Promise<object> 處理請求接受回應
    */
-  async findAll() {
+  async createAll() {
     try {
       // 更新股票清單到資料庫
       await this.stockListService.updateStockListInDatabase();
@@ -166,7 +166,7 @@ export class GetAllHistoricalCandlesService {
    * @param endDate 結束日期
    * @returns Promise<any> 股票歷史數據 | null
    */
-  async findOne(id: string, startDate: string, endDate: string) {
+  async createOne(id: string, startDate: string, endDate: string) {
     // console.warn(
     //   'findOne 方法已棄用，建議使用 StockPriceService.fetchAndSaveStockHistory',
     // );
@@ -192,5 +192,34 @@ export class GetAllHistoricalCandlesService {
    */
   async updateByDate() {
     return await this.snapshotService.updateByDate();
+  }
+
+  /**
+   * 查詢單隻股票的全歷史K線資料
+   */
+  async findOne(id: string) {
+    return await this.stockPriceService.fetchStockHistory(id);
+  }
+
+  /**
+   * 查詢單隻股票的期間歷史K線資料
+   */
+  async findOneDuration(id: string, startDate: string, endDate: string) {
+    return await this.stockPriceService.fetchStockDurationHistory(
+      id,
+      startDate,
+      endDate,
+    );
+  }
+
+  /**
+   * 查詢所有票清單
+   */
+  findAllList() {
+    return this.databaseService.stock.findMany({
+      select: {
+        symbol: true,
+      },
+    });
   }
 }
