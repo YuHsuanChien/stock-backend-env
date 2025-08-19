@@ -75,6 +75,7 @@ export interface BacktestResults {
     totalReturn: number;
     annualReturn: number;
     totalProfit: number;
+    maxDrawdown: number; // 添加缺少的 maxDrawdown 屬性
   };
   trades: {
     totalTrades: number;

@@ -18,6 +18,8 @@ export class BacktestService {
   /**
    * 執行回測
    */
+  // 🎯 完全複製前端邏輯的後端 runBacktest 實現
+
   async runBacktest(
     stocks: string[],
     startDate: string,
@@ -38,7 +40,7 @@ export class BacktestService {
         signalDate: Date;
         targetExecutionDate: Date | null;
       }
-    > = {};
+    > = {}; // 待執行的買入訂單
     const pendingSellOrders: Record<
       string,
       {
@@ -47,7 +49,7 @@ export class BacktestService {
         targetExecutionDate: Date | null;
         position: Position;
       }
-    > = {};
+    > = {}; // 待執行的賣出訂單
     const equityCurve: {
       date: string;
       value: number;
@@ -55,7 +57,8 @@ export class BacktestService {
       positions: number;
     }[] = [];
 
-    // 獲取股票數據
+    console.log('🚀 開始獲取股票數據...');
+
     const allStockData: Record<string, StockData[]> = {};
     for (const stock of stocks) {
       console.log(`📈 正在處理 ${stock}...`);
@@ -86,7 +89,6 @@ export class BacktestService {
 
     console.log(`📊 成功獲取 ${validStocks.length} 支股票的數據，開始回測...`);
 
-    // 獲取所有交易日期
     const allDates = [
       ...new Set(
         Object.values(allStockData)
@@ -95,11 +97,22 @@ export class BacktestService {
       ),
     ].sort();
 
-    // 遍歷每個交易日
+    // 🎯 完全複製前端的主迴圈邏輯
     for (const dateStr of allDates) {
       const currentDate = new Date(dateStr);
 
+      // 使用動態交易日判斷，如果不是則跳過
       if (!this.isTradingDay(currentDate, allStockData)) {
+        const dayName = [
+          '星期日',
+          '星期一',
+          '星期二',
+          '星期三',
+          '星期四',
+          '星期五',
+          '星期六',
+        ][currentDate.getDay()];
+        console.log(`📅 跳過非交易日: ${dateStr} (${dayName})`);
         continue;
       }
 
@@ -109,8 +122,13 @@ export class BacktestService {
           (d) => d.date.toISOString().split('T')[0] === dateStr,
         );
 
-        if (currentIndex === -1) continue;
+        // 🔍 檢查是否找到當前日期的數據
+        if (currentIndex === -1) {
+          console.log(`⚠️ ${dateStr} ${stock} 找不到數據，跳過處理`);
+          continue;
+        }
 
+        // 確保指標數據已經計算完成（至少需要 MACD 計算完成的天數）
         const minRequiredIndex =
           strategyParams.macdSlow + strategyParams.macdSignal;
         if (currentIndex < minRequiredIndex) continue;
@@ -118,20 +136,40 @@ export class BacktestService {
         const current = stockData[currentIndex];
         const previous = stockData[currentIndex - 1];
 
-        if (!current.rsi || !current.macd || !current.macdSignal) {
+        // 🔍 重要：驗證日期匹配性，如果不匹配則跳過
+        const currentDataDateStr = current.date.toISOString().split('T')[0];
+        if (currentDataDateStr !== dateStr) {
+          console.log(`❌ ${dateStr} ${stock} 日期不匹配！
+          迴圈日期: ${dateStr}
+          數據日期: ${currentDataDateStr}
+          跳過此股票處理`);
           continue;
         }
 
-        // 處理待執行的賣出訂單
+        console.log(`✅ ${dateStr} ${stock} 日期匹配確認 - 使用正確數據`);
+
+        // 確認當前數據有完整的技術指標
+        if (!current.rsi || !current.macd || !current.macdSignal) {
+          console.log(
+            `🚫 ${dateStr} ${stock} 指標數據不完整: RSI=${current.rsi}, MACD=${current.macd}, Signal=${current.macdSignal}`,
+          );
+          continue;
+        }
+
+        // 🎯 複製前端邏輯1: 首先處理待執行的賣出訂單（使用T+1日開盤價）
         if (pendingSellOrders[stock]) {
           const sellOrder = pendingSellOrders[stock];
+
+          // 彈性T+1邏輯：目標日期或之後的第一個有資料日執行
           const shouldExecute =
             sellOrder.targetExecutionDate &&
             currentDate >= sellOrder.targetExecutionDate;
 
           if (shouldExecute) {
             const position = sellOrder.position;
-            const sellAmount = current.open * position.quantity * 0.995575;
+
+            // 使用開盤價計算賣出
+            const sellAmount = current.open * position.quantity * 0.995575; // 修正：扣除0.4425%手續費+交易稅
             const profit = sellAmount - position.investAmount;
             const profitRate = profit / position.investAmount;
             const holdingDays = Math.floor(
@@ -139,161 +177,247 @@ export class BacktestService {
                 (1000 * 60 * 60 * 24),
             );
 
-            // 統一格式，所有欄位齊全
+            // 檢查是否延後執行
+            const targetDateStr =
+              sellOrder.targetExecutionDate?.toISOString().split('T')[0] ||
+              '未設定';
+            const isDelayed = targetDateStr !== dateStr;
+            const delayInfo = isDelayed
+              ? ` (原定${targetDateStr}，延後執行)`
+              : '';
+
+            console.log(
+              `💰 ${dateStr} ${stock} T+1賣出執行${delayInfo}: 出場價${current.open.toFixed(
+                2,
+              )} | 獲利率${(profitRate * 100).toFixed(2)}% | 持有${holdingDays}天`,
+            );
+
+            // 從原始reason中提取基本原因，移除舊的獲利率資訊
+            let baseReason = sellOrder.reason;
+            // 移除可能存在的獲利率信息（如"當前獲利: X%"、"獲利: X%"、"虧損: X%"等）
+            baseReason = baseReason.replace(
+              /，[最高獲利當前虧損]{2,4}:\s*-?\d+\.?\d*%/g,
+              '',
+            );
+            baseReason = baseReason.replace(/，獲利:\s*-?\d+\.?\d*%/g, '');
+            baseReason = baseReason.replace(/，虧損:\s*-?\d+\.?\d*%/g, '');
+
+            // 根據實際獲利率添加正確的後綴
+            const actualReason =
+              profitRate >= 0
+                ? `${baseReason}，實際獲利: ${(profitRate * 100).toFixed(2)}%`
+                : `${baseReason}，實際虧損: ${(
+                    Math.abs(profitRate) * 100
+                  ).toFixed(2)}%`;
+
             trades.push({
-              stock: stock,
+              stock,
               action: 'SELL',
-              date: currentDate,
-              price: current.open,
+              date: currentDate, // T+1賣出執行日期
+              price: current.open, // T+1開盤價
               quantity: position.quantity,
               amount: sellAmount,
-              buySignalDate: position.buySignalDate ?? undefined,
-              sellSignalDate: sellOrder.signalDate ?? undefined,
-              actualBuyDate: position.entryDate ?? undefined,
-              actualSellDate: currentDate,
-              entryPrice: position.entryPrice ?? undefined,
-              entryDate: position.entryDate ?? undefined,
-              holdingDays: holdingDays ?? undefined,
-              profit: profit ?? undefined,
-              profitRate: profitRate ?? undefined,
-              reason: sellOrder.reason ?? '',
-              confidence: position.confidence ?? undefined,
+              entryPrice: position.entryPrice,
+              entryDate: position.entryDate,
+              holdingDays,
+              profit,
+              profitRate,
+              confidence: position.confidence,
+              reason: `${actualReason} (T+1開盤價執行)`,
+              // 詳細日期資訊
+              buySignalDate: position.buySignalDate, // 原始買進訊號日期
+              sellSignalDate: sellOrder.signalDate, // 賣出訊號日期
+              actualBuyDate: position.entryDate, // 實際購買日期
+              actualSellDate: currentDate, // 實際賣出日期
             });
 
             currentCapital += sellAmount;
             delete positions[stock];
             delete pendingSellOrders[stock];
-
-            console.log(
-              `💰 ${dateStr} ${stock} 賣出: 價格${current.open.toFixed(2)} | 獲利率${(
-                profitRate * 100
-              ).toFixed(2)}%`,
-            );
           }
         }
 
-        // 處理待執行的買入訂單
+        // 🎯 複製前端邏輯2: 然後處理待執行的買入訂單（使用T+1日開盤價）
         if (pendingBuyOrders[stock]) {
           const buyOrder = pendingBuyOrders[stock];
+
+          // 彈性T+1邏輯：目標日期或之後的第一個有資料日執行
           const shouldExecute =
             buyOrder.targetExecutionDate &&
             currentDate >= buyOrder.targetExecutionDate;
 
           if (shouldExecute) {
-            const maxInvestAmount =
-              currentCapital * strategyParams.maxPositionSize;
-            const quantity =
-              Math.floor(maxInvestAmount / current.open / 1000) * 1000;
-            const actualInvestAmount = quantity * current.open * 1.001425;
+            // 優化版：使用動態倉位管理系統
+            const currentExposure = this.calculateCurrentExposure(
+              positions,
+              currentCapital,
+              allStockData,
+              dateStr,
+            );
 
-            if (quantity >= 1000 && actualInvestAmount <= currentCapital) {
-              const position: Position = {
-                entryDate: currentDate,
-                entryPrice: current.open,
-                quantity,
-                investAmount: actualInvestAmount,
-                confidence: buyOrder.confidence,
-                buySignalDate: buyOrder.signalDate,
-                highPriceSinceEntry: current.open,
-                trailingStopPrice:
-                  current.open * (1 - strategyParams.trailingStopPercent),
-                entryATR: current.atr,
-              };
+            const dynamicPositionSize = this.calculateDynamicPositionSize(
+              buyOrder.confidence || 0,
+              currentExposure,
+              strategyParams,
+            );
 
-              positions[stock] = position;
-              currentCapital -= actualInvestAmount;
+            const investAmount = Math.min(
+              currentCapital * dynamicPositionSize,
+              currentCapital * strategyParams.maxPositionSize,
+            );
 
-              // 統一格式，所有欄位齊全
-              trades.push({
-                stock: stock,
-                action: 'BUY',
-                date: currentDate,
-                price: current.open,
-                quantity: quantity,
-                amount: actualInvestAmount,
-                buySignalDate: buyOrder.signalDate ?? undefined,
-                sellSignalDate: undefined,
-                actualBuyDate: currentDate,
-                actualSellDate: undefined,
-                entryPrice: current.open,
-                entryDate: currentDate,
-                holdingDays: undefined,
-                profit: undefined,
-                profitRate: undefined,
-                reason: buyOrder.reason ?? '',
-                confidence: buyOrder.confidence ?? undefined,
-              });
+            console.log(`💰 ${dateStr} ${stock} T+1執行買入 (開盤價):
+            信心度: ${((buyOrder.confidence || 0) * 100).toFixed(1)}%
+            當前曝險度: ${(currentExposure * 100).toFixed(1)}%
+            動態倉位: ${(dynamicPositionSize * 100).toFixed(1)}%
+            投資金額: ${investAmount.toLocaleString()}`);
+
+            if (investAmount > 10000) {
+              // 使用開盤價計算
+              const quantity = Math.floor(
+                investAmount / (current.open * 1.001425),
+              );
+              const actualInvestAmount = current.open * quantity * 1.001425;
+
+              // 檢查是否延後執行
+              const targetDateStr =
+                buyOrder.targetExecutionDate?.toISOString().split('T')[0] ||
+                '未設定';
+              const isDelayed = targetDateStr !== dateStr;
+              const delayInfo = isDelayed
+                ? ` (原定${targetDateStr}，延後執行)`
+                : '';
 
               console.log(
-                `🛒 ${dateStr} ${stock} 買入: 價格${current.open.toFixed(2)} | 信心度${(
-                  buyOrder.confidence * 100
-                ).toFixed(0)}%`,
+                `💰 ${dateStr} ${stock} T+1買入執行${delayInfo}: 進場價${current.open.toFixed(
+                  2,
+                )} | 股數${quantity.toLocaleString()} | 投資${actualInvestAmount.toLocaleString()}`,
+              );
+
+              if (actualInvestAmount <= currentCapital) {
+                positions[stock] = {
+                  entryDate: currentDate, // 實際進場日期（T+1執行日）
+                  entryPrice: current.open, // 使用T+1日開盤價
+                  quantity,
+                  investAmount: actualInvestAmount,
+                  confidence: buyOrder.confidence,
+                  buySignalDate: buyOrder.signalDate, // 記錄原始訊號日期
+                  // 初始化追蹤停利相關欄位
+                  highPriceSinceEntry: current.open,
+                  trailingStopPrice:
+                    current.open * (1 - strategyParams.trailingStopPercent),
+                  atrStopPrice: current.atr
+                    ? current.open - strategyParams.atrMultiplier * current.atr
+                    : undefined,
+                  entryATR: current.atr,
+                };
+
+                trades.push({
+                  stock,
+                  action: 'BUY',
+                  date: currentDate, // 實際交易日期
+                  price: current.open, // T+1開盤價
+                  quantity,
+                  amount: actualInvestAmount,
+                  confidence: buyOrder.confidence,
+                  reason: `${buyOrder.reason} (T+1開盤價執行)`,
+                  // 詳細日期資訊
+                  buySignalDate: buyOrder.signalDate, // 買進訊號日期
+                  actualBuyDate: currentDate, // 實際購買日期
+                  entryDate: currentDate, // 向後相容
+                  entryPrice: current.open, // 向後相容
+                });
+
+                currentCapital -= actualInvestAmount;
+                console.log(
+                  `✅ ${dateStr} ${stock} T+1買入成功: 餘額${currentCapital.toLocaleString()}`,
+                );
+              }
+            } else {
+              console.log(
+                `💸 ${dateStr} ${stock} T+1投資金額不足最低要求 (${investAmount.toLocaleString()} < 10,000)`,
               );
             }
 
+            // 清除已執行的買入訂單
             delete pendingBuyOrders[stock];
           }
         }
 
-        // 檢查賣出信號
-        if (positions[stock]) {
-          const sellSignal = this.checkSellSignal(
+        // 🎯 複製前端邏輯3: 處理賣出信號檢查（產生T+1賣出訂單）
+        if (positions[stock] && !pendingSellOrders[stock]) {
+          const position = positions[stock];
+          const holdingDays = Math.floor(
+            (currentDate.getTime() - position.entryDate.getTime()) /
+              (1000 * 60 * 60 * 24),
+          );
+          const sellCheck = this.checkSellSignal(
             current,
-            previous,
-            positions[stock],
+            position,
+            holdingDays,
             strategyParams,
           );
 
-          if (sellSignal.signal) {
-            const nextTradingDate = this.findNextTradingDay(
+          if (sellCheck.signal) {
+            // 計算下一個交易日，用於T+1執行
+            const nextTradingDay = this.findNextTradingDay(
               currentDate,
               allStockData,
             );
+
+            // 產生T+1賣出訂單
             pendingSellOrders[stock] = {
-              reason: sellSignal.reason,
+              reason: sellCheck.reason,
               signalDate: currentDate,
-              targetExecutionDate: nextTradingDate,
-              position: positions[stock],
+              targetExecutionDate: nextTradingDay, // 記錄目標執行日期
+              position: { ...position }, // 複製position避免後續修改影響
             };
 
-            console.log(
-              `🔴 ${dateStr} ${stock} 賣出信號: ${sellSignal.reason}`,
-            );
+            console.log(`📋 ${dateStr} ${stock} 產生T+1賣出訂單:
+            信號價格: ${current.close.toFixed(2)}
+            原因: ${sellCheck.reason}
+            目標執行日: ${
+              nextTradingDay?.toISOString().split('T')[0] || '待確定'
+            }
+            將於下一交易日開盤執行`);
           }
         }
 
-        // 檢查買入信號
+        // 🎯 複製前端邏輯4: 處理買入信號檢查（產生T+1買入訂單）
         if (!positions[stock] && !pendingBuyOrders[stock]) {
-          const buySignal = this.checkBuySignal(
+          const buyCheck = this.checkBuySignal(
             current,
             previous,
             strategyParams,
           );
 
-          if (
-            buySignal.signal &&
-            buySignal.confidence! >= strategyParams.confidenceThreshold
-          ) {
-            const nextTradingDate = this.findNextTradingDay(
+          if (buyCheck.signal) {
+            // 計算下一個交易日，用於T+1執行
+            const nextTradingDay = this.findNextTradingDay(
               currentDate,
               allStockData,
             );
+
+            // 產生T+1買入訂單
             pendingBuyOrders[stock] = {
-              confidence: buySignal.confidence!,
-              reason: buySignal.reason,
+              confidence: buyCheck.confidence || 0,
+              reason: buyCheck.reason,
               signalDate: currentDate,
-              targetExecutionDate: nextTradingDate,
+              targetExecutionDate: nextTradingDay, // 記錄目標執行日期
             };
 
-            console.log(
-              `🟢 ${dateStr} ${stock} 買入信號: ${buySignal.reason} | 信心度${(
-                buySignal.confidence! * 100
-              ).toFixed(0)}%`,
-            );
+            console.log(`📋 ${dateStr} ${stock} 產生T+1買入訊號:
+            信號價格: ${current.close}
+            信心度: ${((buyCheck.confidence || 0) * 100).toFixed(1)}%
+            原因: ${buyCheck.reason}
+            目標執行日: ${
+              nextTradingDay?.toISOString().split('T')[0] || '待確定'
+            }
+            將於下一交易日開盤執行`);
           }
         }
 
-        // 更新持倉的追蹤停損價
+        // 🎯 複製前端邏輯5: 更新持倉的追蹤停損價
         if (positions[stock]) {
           const position = positions[stock];
           if (current.high > position.highPriceSinceEntry) {
@@ -308,36 +432,174 @@ export class BacktestService {
               }
             }
           }
+
+          // 更新ATR停損價
+          if (strategyParams.enableATRStop && current.atr) {
+            position.atrStopPrice =
+              position.entryPrice - strategyParams.atrMultiplier * current.atr;
+          }
         }
       }
 
-      // 記錄權益曲線
-      const totalPositionValue = Object.values(positions).reduce((sum, pos) => {
-        const stockData =
-          allStockData[
-            Object.keys(positions).find((s) => positions[s] === pos)!
-          ];
+      // 🎯 複製前端邏輯6: 記錄權益曲線
+      let positionValue = 0;
+      for (const [stock, position] of Object.entries(positions)) {
+        const stockData = allStockData[stock];
         const currentData = stockData.find(
           (d) => d.date.toISOString().split('T')[0] === dateStr,
         );
-        return sum + (currentData ? currentData.close * pos.quantity : 0);
-      }, 0);
+        if (currentData) {
+          positionValue += currentData.close * position.quantity;
+        }
+      }
 
+      const totalValue = currentCapital + positionValue;
       equityCurve.push({
         date: dateStr,
-        value: currentCapital + totalPositionValue,
+        value: totalValue,
         cash: currentCapital,
-        positions: totalPositionValue,
+        positions: positionValue,
       });
     }
 
-    // 計算回測結果
-    return this.calculateBacktestResults(
-      trades,
+    // 記錄回測結束時的待執行訂單（應該很少，因為採用延後執行策略）
+    const pendingBuyOrdersCount = Object.keys(pendingBuyOrders).length;
+    const pendingSellOrdersCount = Object.keys(pendingSellOrders).length;
+
+    if (pendingBuyOrdersCount > 0) {
+      console.log(
+        `⚠️ 回測結束時仍有 ${pendingBuyOrdersCount} 個未執行的買入訂單：`,
+      );
+      Object.entries(pendingBuyOrders).forEach(([stock, order]) => {
+        const signalDate = order.signalDate.toISOString().split('T')[0];
+        const targetDate =
+          order.targetExecutionDate?.toISOString().split('T')[0] || '未設定';
+        console.log(
+          `   ${stock}: 訊號日期 ${signalDate}, 目標執行日期 ${targetDate} - 原因: 回測期間結束前未找到交易日`,
+        );
+      });
+    }
+
+    if (pendingSellOrdersCount > 0) {
+      console.log(
+        `⚠️ 回測結束時仍有 ${pendingSellOrdersCount} 個未執行的賣出訂單：`,
+      );
+      Object.entries(pendingSellOrders).forEach(([stock, order]) => {
+        const signalDate = order.signalDate.toISOString().split('T')[0];
+        const targetDate =
+          order.targetExecutionDate?.toISOString().split('T')[0] || '未設定';
+        console.log(
+          `   ${stock}: 訊號日期 ${signalDate}, 目標執行日期 ${targetDate} - 原因: 回測期間結束前未找到交易日`,
+        );
+      });
+    }
+
+    // 🎯 複製前端邏輯7: 計算回測結果
+    const completedTrades = trades.filter((t) => t.action === 'SELL');
+    const winningTrades = completedTrades.filter((t) => (t.profit || 0) > 0);
+    const losingTrades = completedTrades.filter((t) => (t.profit || 0) <= 0);
+
+    const finalValue =
+      equityCurve.length > 0
+        ? equityCurve[equityCurve.length - 1].value
+        : initialCapital;
+    const totalReturn = (finalValue - initialCapital) / initialCapital;
+    const years =
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+      (1000 * 60 * 60 * 24 * 365.25);
+    const annualReturn =
+      years > 0 ? Math.pow(finalValue / initialCapital, 1 / years) - 1 : 0;
+
+    // 計算最大回撤
+    let maxDrawdown = 0;
+    let peak = initialCapital;
+    for (const point of equityCurve) {
+      if (point.value > peak) {
+        peak = point.value;
+      }
+      const drawdown = (peak - point.value) / peak;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
+
+    const resultsData = {
+      performance: {
+        initialCapital,
+        finalCapital: finalValue,
+        totalReturn,
+        annualReturn,
+        totalProfit: finalValue - initialCapital,
+        maxDrawdown: maxDrawdown,
+      },
+      trades: {
+        totalTrades: completedTrades.length,
+        winningTrades: winningTrades.length,
+        losingTrades: losingTrades.length,
+        winRate:
+          completedTrades.length > 0
+            ? winningTrades.length / completedTrades.length
+            : 0,
+        avgWin:
+          winningTrades.length > 0
+            ? winningTrades.reduce((sum, t) => sum + (t.profitRate || 0), 0) /
+              winningTrades.length
+            : 0,
+        avgLoss:
+          losingTrades.length > 0
+            ? losingTrades.reduce((sum, t) => sum + (t.profitRate || 0), 0) /
+              losingTrades.length
+            : 0,
+        maxWin:
+          winningTrades.length > 0
+            ? Math.max(...winningTrades.map((t) => t.profitRate || 0))
+            : 0,
+        maxLoss:
+          losingTrades.length > 0
+            ? Math.min(...losingTrades.map((t) => t.profitRate || 0))
+            : 0,
+        avgHoldingDays:
+          completedTrades.length > 0
+            ? completedTrades.reduce(
+                (sum, t) => sum + (t.holdingDays || 0),
+                0,
+              ) / completedTrades.length
+            : 0,
+        // 新增獲利因子計算
+        profitFactor: (() => {
+          const totalGains = winningTrades.reduce(
+            (sum, t) => sum + Math.abs(t.profit || 0),
+            0,
+          );
+          const totalLosses = losingTrades.reduce(
+            (sum, t) => sum + Math.abs(t.profit || 0),
+            0,
+          );
+          return totalLosses > 0
+            ? totalGains / totalLosses
+            : totalGains > 0
+              ? 999
+              : 0;
+        })(),
+      },
+      detailedTrades: completedTrades,
       equityCurve,
-      initialCapital,
-      currentCapital,
-    );
+      stockPerformance: validStocks.map((stock) => {
+        const stockTrades = completedTrades.filter((t) => t.stock === stock);
+        const stockWins = stockTrades.filter((t) => (t.profit || 0) > 0);
+        return {
+          stock,
+          trades: stockTrades.length,
+          winRate:
+            stockTrades.length > 0 ? stockWins.length / stockTrades.length : 0,
+          totalProfit: stockTrades.reduce((sum, t) => sum + (t.profit || 0), 0),
+        };
+      }),
+    };
+
+    console.log(`🎉 回測完成！共執行 ${completedTrades.length} 筆交易`);
+    console.log('resultsData', resultsData);
+    return resultsData;
   }
 
   /**
@@ -348,7 +610,6 @@ export class BacktestService {
     startDate: string,
     endDate: string,
   ): Promise<StockData[]> {
-    // 先獲取股票ID
     const stock = await this.databaseService.stock.findUnique({
       where: { symbol },
     });
@@ -382,21 +643,24 @@ export class BacktestService {
   }
 
   /**
-   * 計算技術指標
+   * 計算技術指標 (修正版 - 與前端邏輯完全一致)
    */
   private calculateIndicators(
     data: StockData[],
     strategyParams: StrategyParams,
   ): StockData[] {
+    console.log(`🔍 開始計算技術指標，數據筆數: ${data.length}`);
     const result = [...data];
 
-    // RSI 計算
+    // ====== RSI 計算 (使用威爾德平滑法，與前端完全一致) ======
+    console.log(`📊 開始計算 RSI，週期: ${strategyParams.rsiPeriod}`);
     for (let i = 1; i < result.length; i++) {
       const change = result[i].close - result[i - 1].close;
       const gain = change > 0 ? change : 0;
       const loss = change < 0 ? -change : 0;
 
       if (i === strategyParams.rsiPeriod) {
+        // 初始值：使用簡單移動平均（威爾德方法）
         let avgGain = 0;
         let avgLoss = 0;
         for (let j = 1; j <= strategyParams.rsiPeriod; j++) {
@@ -407,6 +671,7 @@ export class BacktestService {
         result[i].avgGain = avgGain / strategyParams.rsiPeriod;
         result[i].avgLoss = avgLoss / strategyParams.rsiPeriod;
       } else if (i > strategyParams.rsiPeriod) {
+        // 後續使用威爾德平滑法（比標準EMA更穩定）
         const alpha = 1 / strategyParams.rsiPeriod;
         result[i].avgGain =
           (1 - alpha) * (result[i - 1].avgGain || 0) + alpha * gain;
@@ -414,10 +679,12 @@ export class BacktestService {
           (1 - alpha) * (result[i - 1].avgLoss || 0) + alpha * loss;
       }
 
+      // 計算 RSI
       if (i >= strategyParams.rsiPeriod) {
         const avgGain = result[i].avgGain || 0;
         const avgLoss = result[i].avgLoss || 0;
 
+        // 避免除零錯誤
         if (avgLoss === 0) {
           result[i].rsi = 100;
         } else {
@@ -425,26 +692,33 @@ export class BacktestService {
           result[i].rsi = 100 - 100 / (1 + rs);
         }
 
+        // 數據品質檢查
         if (
           isNaN(result[i].rsi!) ||
           result[i].rsi! < 0 ||
           result[i].rsi! > 100
         ) {
-          result[i].rsi = i > 0 ? result[i - 1].rsi : 50;
+          console.warn(`⚠️ RSI 異常值: ${result[i].rsi} at index ${i}`);
+          result[i].rsi = i > 0 ? result[i - 1].rsi : 50; // 使用前值或中性值
         }
       }
     }
 
-    // MACD 計算
+    // ====== MACD 計算 (與前端邏輯完全一致) ======
+    console.log(
+      `📈 開始計算 MACD，參數: ${strategyParams.macdFast}/${strategyParams.macdSlow}/${strategyParams.macdSignal}`,
+    );
     const fastMultiplier = 2 / (strategyParams.macdFast + 1);
     const slowMultiplier = 2 / (strategyParams.macdSlow + 1);
     const signalMultiplier = 2 / (strategyParams.macdSignal + 1);
 
     for (let i = 0; i < result.length; i++) {
       if (i === 0) {
+        // 初始值
         result[i].ema12 = result[i].close;
         result[i].ema26 = result[i].close;
       } else {
+        // EMA 計算公式: EMA = (Close - EMA_prev) * multiplier + EMA_prev
         result[i].ema12 =
           (result[i].close - (result[i - 1].ema12 || 0)) * fastMultiplier +
           (result[i - 1].ema12 || 0);
@@ -453,215 +727,649 @@ export class BacktestService {
           (result[i - 1].ema26 || 0);
       }
 
+      // MACD = EMA12 - EMA26
       if (i >= strategyParams.macdSlow - 1) {
         result[i].macd = (result[i].ema12 || 0) - (result[i].ema26 || 0);
 
+        // 信號線計算 (MACD 的 9 日 EMA)
         if (i === strategyParams.macdSlow - 1) {
-          result[i].macdSignal = result[i].macd;
-        } else {
+          result[i].macdSignal = result[i].macd || 0; // 初始值
+        } else if (i > strategyParams.macdSlow - 1) {
           result[i].macdSignal =
-            (result[i].macd! - (result[i - 1].macdSignal || 0)) *
+            ((result[i].macd || 0) - (result[i - 1].macdSignal || 0)) *
               signalMultiplier +
             (result[i - 1].macdSignal || 0);
         }
 
-        result[i].macdHistogram = result[i].macd! - result[i].macdSignal!;
+        // MACD 柱狀圖
+        if (result[i].macdSignal !== undefined) {
+          result[i].macdHistogram =
+            (result[i].macd || 0) - (result[i].macdSignal || 0);
+        }
       }
     }
 
-    // 移動平均線計算
+    // ====== 移動平均線和成交量計算 (與前端一致) ======
     for (let i = 0; i < result.length; i++) {
+      // MA5 - 修正：使用 i >= 4 而不是 i >= 5
       if (i >= 4) {
-        result[i].ma5 =
-          result
-            .slice(i - 4, i + 1)
-            .reduce((sum, item) => sum + item.close, 0) / 5;
+        let sum = 0;
+        for (let j = i - 4; j <= i; j++) {
+          sum += result[j].close;
+        }
+        result[i].ma5 = sum / 5;
       }
 
+      // MA20 - 修正：使用 i >= 19 而不是 i >= 20
       if (i >= 19) {
-        result[i].ma20 =
-          result
-            .slice(i - 19, i + 1)
-            .reduce((sum, item) => sum + item.close, 0) / 20;
-
-        result[i].volumeMA20 =
-          result
-            .slice(i - 19, i + 1)
-            .reduce((sum, item) => sum + item.volume, 0) / 20;
-
-        if (result[i].volumeMA20! > 0) {
-          result[i].volumeRatio = result[i].volume / result[i].volumeMA20!;
+        let sum = 0;
+        for (let j = i - 19; j <= i; j++) {
+          sum += result[j].close;
         }
+        result[i].ma20 = sum / 20;
+
+        // 成交量相關計算
+        let volumeSum = 0;
+        for (let j = i - 19; j <= i; j++) {
+          volumeSum += result[j].volume;
+        }
+        result[i].volumeMA20 = volumeSum / 20;
+        result[i].volumeRatio = result[i].volume / (result[i].volumeMA20 || 1);
       }
 
+      // MA60 (季線) - 修正：使用 i >= 59 而不是 i >= 60
       if (i >= 59 && strategyParams.enableMA60) {
-        result[i].ma60 =
-          result
-            .slice(i - 59, i + 1)
-            .reduce((sum, item) => sum + item.close, 0) / 60;
+        let sum = 0;
+        for (let j = i - 59; j <= i; j++) {
+          sum += result[j].close;
+        }
+        result[i].ma60 = sum / 60;
       }
 
-      // ATR 計算
-      if (i > 0) {
-        const tr = Math.max(
-          result[i].high - result[i].low,
-          Math.abs(result[i].high - result[i - 1].close),
-          Math.abs(result[i].low - result[i - 1].close),
-        );
-
-        if (i === strategyParams.atrPeriod) {
-          result[i].atr =
-            result.slice(1, i + 1).reduce((sum, item, idx) => {
-              if (idx === 0) return 0;
-              const prevItem = result[idx];
-              return (
-                sum +
-                Math.max(
-                  item.high - item.low,
-                  Math.abs(item.high - prevItem.close),
-                  Math.abs(item.low - prevItem.close),
-                )
+      // ====== ATR (Average True Range) 計算 ======
+      if (i > 0 && strategyParams.enableATRStop) {
+        if (i >= strategyParams.atrPeriod) {
+          let atrSum = 0;
+          for (let j = i - strategyParams.atrPeriod + 1; j <= i; j++) {
+            if (j > 0) {
+              const tr = Math.max(
+                result[j].high - result[j].low,
+                Math.abs(result[j].high - result[j - 1].close),
+                Math.abs(result[j].low - result[j - 1].close),
               );
-            }, 0) / strategyParams.atrPeriod;
-        } else if (i > strategyParams.atrPeriod) {
-          result[i].atr =
-            ((result[i - 1].atr || 0) * (strategyParams.atrPeriod - 1) + tr) /
-            strategyParams.atrPeriod;
+              atrSum += tr;
+            }
+          }
+          result[i].atr = atrSum / strategyParams.atrPeriod;
         }
       }
 
-      // 價格動能計算
+      // ====== 價格動能指標計算 ======
       if (
-        strategyParams.enablePriceMomentum &&
-        i >= strategyParams.priceMomentumPeriod
+        i >= strategyParams.priceMomentumPeriod &&
+        strategyParams.enablePriceMomentum
       ) {
+        const currentPrice = result[i].close;
         const pastPrice = result[i - strategyParams.priceMomentumPeriod].close;
-        result[i].priceMomentum = (result[i].close - pastPrice) / pastPrice;
+        result[i].priceMomentum = (currentPrice - pastPrice) / pastPrice;
       }
     }
+
+    console.log(
+      `✅ 技術指標計算完成，有效數據從第 ${
+        strategyParams.macdSlow + strategyParams.macdSignal
+      } 天開始`,
+    );
 
     return result;
   }
 
   /**
-   * 檢查買入信號
+   * 檢查買入信號 (修正版 - 與前端邏輯一致)
    */
   private checkBuySignal(
     current: StockData,
     previous: StockData,
     strategyParams: StrategyParams,
   ): BuySignalResult {
-    if (
-      !current.rsi ||
-      !current.macd ||
-      !current.macdSignal ||
-      !current.volumeRatio
-    ) {
-      return { signal: false, reason: '指標數據不完整' };
-    }
+    const dateStr = current.date.toISOString().split('T')[0];
+    const isPythonMode = strategyParams.usePythonLogic;
 
-    let confidence = 0;
-    const reasons: string[] = [];
+    console.log(
+      `🔍 ${dateStr} 開始${isPythonMode ? 'Python階層' : '標準'}決策分析...`,
+    );
 
-    // RSI 超賣信號
-    if (current.rsi <= strategyParams.rsiOversold) {
-      confidence += 0.3;
-      reasons.push(`RSI超賣(${current.rsi.toFixed(1)})`);
-    }
-
-    // MACD 金叉
-    if (
-      current.macd > current.macdSignal &&
-      previous.macd! <= previous.macdSignal!
-    ) {
-      confidence += 0.35;
-      reasons.push('MACD金叉');
-    }
-
-    // 成交量放大
-    if (current.volumeRatio >= strategyParams.volumeThreshold) {
-      confidence += 0.2;
-      reasons.push(`量增(${current.volumeRatio.toFixed(1)}倍)`);
-    }
-
-    // 價格動能
-    if (
-      strategyParams.enablePriceMomentum &&
-      current.priceMomentum &&
-      current.priceMomentum >= strategyParams.priceMomentumThreshold
-    ) {
-      confidence += 0.15;
-      reasons.push(`動能向上(${(current.priceMomentum * 100).toFixed(1)}%)`);
-    }
-
-    const signal = confidence >= strategyParams.confidenceThreshold;
-    const reason = reasons.length > 0 ? reasons.join(' + ') : '無明確信號';
-
-    return { signal, reason, confidence };
-  }
-
-  /**
-   * 檢查賣出信號
-   */
-  private checkSellSignal(
-    current: StockData,
-    previous: StockData,
-    position: Position,
-    strategyParams: StrategyParams,
-  ): SellSignalResult {
-    const currentProfit =
-      (current.close - position.entryPrice) / position.entryPrice;
-
-    // 停損檢查
-    if (currentProfit <= -strategyParams.stopLoss) {
-      return {
-        signal: true,
-        reason: `停損(${(currentProfit * 100).toFixed(1)}%)`,
-      };
-    }
-
-    // 停利檢查
-    if (currentProfit >= strategyParams.stopProfit) {
-      return {
-        signal: true,
-        reason: `停利(${(currentProfit * 100).toFixed(1)}%)`,
-      };
-    }
-
-    // 追蹤停利檢查
-    if (
-      strategyParams.enableTrailingStop &&
-      current.close <= position.trailingStopPrice
-    ) {
-      return { signal: true, reason: '追蹤停利觸發' };
-    }
-
-    // ATR 動態停損檢查
-    if (
-      strategyParams.enableATRStop &&
-      current.atr &&
-      position.entryATR &&
-      current.close <=
-        position.entryPrice - current.atr * strategyParams.atrMultiplier
-    ) {
-      return { signal: true, reason: 'ATR動態停損' };
-    }
-
-    // MACD 死叉
-    if (
-      current.macd! < current.macdSignal! &&
-      previous.macd! >= previous.macdSignal!
-    ) {
-      const holdingDays = Math.floor(
-        (current.date.getTime() - position.entryDate.getTime()) /
-          (1000 * 60 * 60 * 24),
+    // 第一層：數據完整性檢查
+    if (!current.rsi || !current.macd || !current.macdSignal) {
+      console.log(
+        `🚫 ${dateStr} 數據不足: RSI=${current.rsi}, MACD=${current.macd}, Signal=${current.macdSignal}`,
       );
-      if (holdingDays >= strategyParams.minHoldingDays) {
-        return { signal: true, reason: 'MACD死叉' };
+      return { signal: false, reason: '數據不足' };
+    }
+
+    const rsi = current.rsi;
+    const macd = current.macd;
+    const macdSignal = current.macdSignal;
+    const volumeRatio = current.volumeRatio || 0;
+
+    console.log(
+      `📊 ${dateStr} 技術指標 - RSI: ${rsi.toFixed(2)}, MACD: ${macd.toFixed(
+        4,
+      )}, 量比: ${volumeRatio.toFixed(2)}`,
+    );
+
+    // 第二層：基礎技術指標篩選（Python風格更嚴格）
+    if (isPythonMode && strategyParams.hierarchicalDecision) {
+      // Python 階層決策：嚴格的條件檢查
+
+      // 檢查 1: RSI 超賣條件
+      if (rsi > strategyParams.rsiOversold) {
+        console.log(
+          `🚫 ${dateStr} Python模式 - RSI不符合條件: ${rsi.toFixed(2)} > ${
+            strategyParams.rsiOversold
+          }`,
+        );
+        return {
+          signal: false,
+          reason: `RSI不符合條件 (Python嚴格模式: >${strategyParams.rsiOversold})`,
+        };
+      }
+
+      // 檢查 2: MACD 黃金交叉
+      if (macd <= macdSignal) {
+        console.log(
+          `🚫 ${dateStr} Python模式 - MACD未黃金交叉: ${macd.toFixed(
+            4,
+          )} <= ${macdSignal.toFixed(4)}`,
+        );
+        return { signal: false, reason: 'MACD未黃金交叉' };
+      }
+
+      // 檢查 3: RSI 回升確認
+      if (!previous || rsi <= (previous.rsi || 0)) {
+        console.log(
+          `🚫 ${dateStr} Python模式 - RSI未回升: ${rsi.toFixed(2)} <= ${
+            previous?.rsi?.toFixed(2) || 'N/A'
+          }`,
+        );
+        return { signal: false, reason: 'RSI未回升' };
+      }
+
+      // 檢查 4: 成交量確認
+      if (volumeRatio < strategyParams.volumeThreshold) {
+        console.log(
+          `🚫 ${dateStr} Python模式 - 成交量不足: ${volumeRatio.toFixed(2)} < ${
+            strategyParams.volumeThreshold
+          }`,
+        );
+        return { signal: false, reason: '成交量不足' };
+      }
+
+      // 檢查 5: K線型態確認
+      if (current.close <= current.open) {
+        console.log(
+          `🚫 ${dateStr} Python模式 - 收黑K線: Close=${current.close} <= Open=${current.open}`,
+        );
+        return { signal: false, reason: '收黑K線' };
+      }
+
+      // 檢查 6: 價格動能確認（Python額外條件）
+      if (
+        strategyParams.enablePriceMomentum &&
+        current.priceMomentum !== undefined
+      ) {
+        if (current.priceMomentum < 0) {
+          console.log(
+            `🚫 ${dateStr} Python模式 - 價格動能為負: ${(
+              current.priceMomentum * 100
+            ).toFixed(2)}%`,
+          );
+          return { signal: false, reason: '價格動能為負' };
+        }
+      }
+    } else {
+      // 原版較寬鬆的條件檢查
+      if (rsi > strategyParams.rsiOversold) {
+        console.log(
+          `🚫 ${dateStr} 標準模式 - RSI不符合條件: ${rsi.toFixed(2)} > ${
+            strategyParams.rsiOversold
+          }`,
+        );
+        return {
+          signal: false,
+          reason: `RSI不符合條件 (>${strategyParams.rsiOversold})`,
+        };
+      }
+
+      if (macd <= macdSignal) {
+        console.log(
+          `🚫 ${dateStr} 標準模式 - MACD未黃金交叉: ${macd.toFixed(
+            4,
+          )} <= ${macdSignal.toFixed(4)}`,
+        );
+        return { signal: false, reason: 'MACD未黃金交叉' };
+      }
+
+      if (!previous || rsi <= (previous.rsi || 0)) {
+        console.log(
+          `🚫 ${dateStr} 標準模式 - RSI未回升: ${rsi.toFixed(2)} <= ${
+            previous?.rsi?.toFixed(2) || 'N/A'
+          }`,
+        );
+        return { signal: false, reason: 'RSI未回升' };
+      }
+
+      if (volumeRatio < strategyParams.volumeThreshold) {
+        console.log(
+          `🚫 ${dateStr} 標準模式 - 成交量不足: ${volumeRatio.toFixed(2)} < ${
+            strategyParams.volumeThreshold
+          }`,
+        );
+        return { signal: false, reason: '成交量不足' };
+      }
+
+      if (current.close <= current.open) {
+        console.log(
+          `🚫 ${dateStr} 標準模式 - 收黑K線: Close=${current.close} <= Open=${current.open}`,
+        );
+        return { signal: false, reason: '收黑K線' };
       }
     }
 
-    return { signal: false, reason: '持續持有' };
+    // 第三層：信心度評估
+    const confidence = this.calculateConfidence(
+      current,
+      strategyParams,
+      previous,
+    );
+    const confidenceThreshold = strategyParams.confidenceThreshold;
+
+    if (confidence < confidenceThreshold) {
+      console.log(
+        `🚫 ${dateStr} 信心度不足: ${(confidence * 100).toFixed(1)}% < ${(
+          confidenceThreshold * 100
+        ).toFixed(1)}%`,
+      );
+      return {
+        signal: false,
+        reason: `信心度不足: ${(confidence * 100).toFixed(1)}% < ${(
+          confidenceThreshold * 100
+        ).toFixed(1)}%`,
+      };
+    }
+
+    // 通過所有檢查！
+    console.log(
+      `✅ ${dateStr} ${
+        isPythonMode ? 'Python階層決策' : '標準決策'
+      }通過！信心度: ${(confidence * 100).toFixed(1)}%`,
+    );
+    return {
+      signal: true,
+      reason: `${isPythonMode ? 'Python階層決策' : '標準'}買進訊號，信心度: ${(
+        confidence * 100
+      ).toFixed(1)}%`,
+      confidence,
+    };
+  }
+
+  /**
+   * 買入信心度計算器 (與前端邏輯完全一致)
+   */
+  private calculateConfidence(
+    current: StockData,
+    strategyParams: StrategyParams,
+    previous?: StockData,
+  ): number {
+    // Python 風格：較低的起始信心度，透過嚴格評估提升
+    let confidence = strategyParams.usePythonLogic ? 0.3 : 0.45;
+
+    console.log(
+      `🧮 開始計算信心度，Python模式: ${strategyParams.usePythonLogic}`,
+    );
+
+    // RSI 深度分析（Python 風格更嚴格）
+    const rsi = current.rsi || 0;
+    if (strategyParams.usePythonLogic) {
+      // Python 階層決策：更嚴格的 RSI 評分
+      if (rsi < 20) {
+        confidence += 0.35; // 極度超賣，高度看多
+      } else if (rsi < 25) {
+        confidence += 0.3; // 深度超賣
+      } else if (rsi < 30) {
+        confidence += 0.25; // 標準超賣
+      } else if (rsi < 35) {
+        confidence += 0.15; // 輕度超賣
+      } else {
+        // RSI > 35，Python 模式下直接降低信心度
+        confidence -= 0.1;
+      }
+    } else {
+      // 原版較寬鬆的評分
+      if (rsi < 25) {
+        confidence += 0.25;
+      } else if (rsi < 35) {
+        confidence += 0.2;
+      } else if (rsi < 45) {
+        confidence += 0.15;
+      }
+    }
+
+    // RSI 回升趨勢（兩種模式都支援）
+    if (previous && rsi > (previous.rsi || 0)) {
+      const rsiImprovement = rsi - (previous.rsi || 0);
+      if (rsiImprovement > 3) {
+        confidence += 0.15; // 強勢回升
+      } else if (rsiImprovement > 1) {
+        confidence += 0.1; // 一般回升
+      } else {
+        confidence += 0.05; // 輕微回升
+      }
+    }
+
+    // MACD 趨勢確認（Python 風格更注重交叉強度）
+    const macd = current.macd || 0;
+    const macdSignal = current.macdSignal || 0;
+    const macdHisto = current.macdHistogram || 0;
+
+    if (macd > macdSignal) {
+      // 檢查是否為新的黃金交叉
+      const prevMacd = previous?.macd || 0;
+      const prevSignal = previous?.macdSignal || 0;
+      const isNewGoldenCross = prevMacd <= prevSignal && macd > macdSignal;
+
+      if (strategyParams.usePythonLogic) {
+        if (isNewGoldenCross && macdHisto > 0) {
+          confidence += 0.25; // 新黃金交叉且柱狀圖為正
+        } else if (isNewGoldenCross) {
+          confidence += 0.2; // 新黃金交叉
+        } else if (macdHisto > 0) {
+          confidence += 0.15; // 持續黃金交叉且強化
+        } else {
+          confidence += 0.1; // 基本黃金交叉
+        }
+      } else {
+        confidence += 0.15; // 原版固定加分
+      }
+    }
+
+    // 成交量驗證（Python 風格更高門檻）
+    const volumeRatio = current.volumeRatio || 0;
+    const volumeThreshold = strategyParams.volumeThreshold;
+
+    if (strategyParams.usePythonLogic) {
+      if (volumeRatio > volumeThreshold * 1.5) {
+        confidence += 0.15; // 爆量
+      } else if (volumeRatio > volumeThreshold) {
+        confidence += 0.1; // 量增
+      } else {
+        confidence -= 0.05; // 量不足扣分
+      }
+    } else {
+      if (volumeRatio > volumeThreshold) {
+        confidence += 0.1;
+      }
+    }
+
+    // 趨勢排列確認
+    const close = current.close;
+    const ma5 = current.ma5 || 0;
+    const ma20 = current.ma20 || 0;
+    const ma60 = current.ma60 || 0;
+
+    if (strategyParams.usePythonLogic) {
+      // Python 風格：更注重多頭排列
+      if (
+        strategyParams.enableMA60 &&
+        close > ma5 &&
+        ma5 > ma20 &&
+        ma20 > ma60
+      ) {
+        confidence += 0.15; // 完美多頭排列
+      } else if (close > ma5 && ma5 > ma20) {
+        confidence += 0.12; // 短中期多頭排列
+      } else if (close > ma20) {
+        confidence += 0.08; // 基本多頭
+      } else {
+        confidence -= 0.05; // 空頭排列扣分
+      }
+    } else {
+      // 原版評分
+      if (close > ma20) {
+        confidence += 0.08;
+      }
+    }
+
+    // 價格動能評估
+    const priceMomentum = current.priceMomentum || 0;
+    if (strategyParams.enablePriceMomentum) {
+      if (priceMomentum > strategyParams.priceMomentumThreshold) {
+        confidence += 0.1; // 強勢動能
+      } else if (priceMomentum > 0) {
+        confidence += 0.05; // 正動能
+      } else if (priceMomentum < -strategyParams.priceMomentumThreshold) {
+        confidence -= 0.05; // 負動能扣分
+      }
+    }
+
+    // 最終調整
+    const finalConfidence = Math.max(0, Math.min(confidence, 0.95));
+
+    console.log(
+      `📊 信心度計算完成: ${(finalConfidence * 100).toFixed(
+        1,
+      )}% (RSI: ${rsi.toFixed(1)}, MACD: ${macd > macdSignal ? '✅' : '❌'})`,
+    );
+
+    return finalConfidence;
+  }
+
+  /**
+   * 檢查賣出信號 (修正版 - 與前端邏輯一致)
+   */
+  private checkSellSignal(
+    current: StockData,
+    position: Position,
+    holdingDays: number,
+    strategyParams: StrategyParams,
+  ): SellSignalResult {
+    const currentPrice = current.close;
+    const entryPrice = position.entryPrice;
+    const profitRate = (currentPrice - entryPrice) / entryPrice;
+
+    // 更新進場後最高價 (追蹤停利用)
+    if (currentPrice > position.highPriceSinceEntry) {
+      position.highPriceSinceEntry = currentPrice;
+    }
+
+    // 高優先級: 追蹤停利機制
+    if (strategyParams.enableTrailingStop) {
+      const profitSinceEntry =
+        (position.highPriceSinceEntry - entryPrice) / entryPrice;
+
+      // 只有獲利超過啟動門檻才啟用追蹤停利
+      if (profitSinceEntry >= strategyParams.trailingActivatePercent) {
+        const trailingStopPrice =
+          position.highPriceSinceEntry *
+          (1 - strategyParams.trailingStopPercent);
+        position.trailingStopPrice = trailingStopPrice;
+
+        if (currentPrice <= trailingStopPrice) {
+          return {
+            signal: true,
+            reason: `追蹤停利出場，最高點回落: ${(
+              strategyParams.trailingStopPercent * 100
+            ).toFixed(1)}%，最高獲利: ${(profitSinceEntry * 100).toFixed(
+              2,
+            )}%，當前獲利: ${(profitRate * 100).toFixed(2)}%`,
+          };
+        }
+      }
+    }
+
+    // 中優先級: ATR動態停損
+    if (strategyParams.enableATRStop && position.atrStopPrice) {
+      if (currentPrice <= position.atrStopPrice) {
+        return {
+          signal: true,
+          reason: `ATR動態停損出場，虧損: ${(profitRate * 100).toFixed(2)}%`,
+        };
+      }
+    }
+
+    // 基礎停利停損
+    if (profitRate >= strategyParams.stopProfit) {
+      return {
+        signal: true,
+        reason: `固定停利出場，獲利: ${(profitRate * 100).toFixed(2)}%`,
+      };
+    }
+
+    if (profitRate <= -strategyParams.stopLoss) {
+      return {
+        signal: true,
+        reason: `固定停損出場，虧損: ${(profitRate * 100).toFixed(2)}%`,
+      };
+    }
+
+    // 中優先級: 持有天數保護 (避免剛進場就被技術指標洗出)
+    if (holdingDays <= strategyParams.minHoldingDays) {
+      // 在保護期內，只允許重大虧損出場
+      if (profitRate <= -strategyParams.stopLoss * 1.5) {
+        return {
+          signal: true,
+          reason: `保護期內重大虧損出場，虧損: ${(profitRate * 100).toFixed(2)}%`,
+        };
+      }
+      // 其他情況不出場
+      return { signal: false, reason: '' };
+    }
+
+    // 技術指標出場 (保護期後才生效)
+    if ((current.rsi || 0) > 70) {
+      return { signal: true, reason: 'RSI超買出場' };
+    }
+
+    if (
+      (current.macd || 0) < (current.macdSignal || 0) &&
+      (current.macdHistogram || 0) < 0
+    ) {
+      return { signal: true, reason: 'MACD死亡交叉出場' };
+    }
+
+    // 長期持有出場
+    if (holdingDays > 30) {
+      return { signal: true, reason: '持有超過30天出場' };
+    }
+
+    return { signal: false, reason: '' };
+  }
+
+  /**
+   * 計算當前總曝險度
+   */
+  private calculateCurrentExposure(
+    positions: Record<string, Position>,
+    currentCapital: number,
+    allStockData: Record<string, StockData[]>,
+    currentDateStr: string,
+  ): number {
+    let totalPositionValue = 0;
+
+    for (const [stock, position] of Object.entries(positions)) {
+      const stockData = allStockData[stock];
+      if (stockData) {
+        const currentData = stockData.find(
+          (d) => d.date.toISOString().split('T')[0] === currentDateStr,
+        );
+        if (currentData) {
+          totalPositionValue += currentData.close * position.quantity;
+        }
+      }
+    }
+
+    const totalCapital = currentCapital + totalPositionValue;
+    const exposure = totalPositionValue / totalCapital;
+
+    console.log(
+      `📊 當前曝險度計算: 持倉價值 ${totalPositionValue.toLocaleString()}, 總資本 ${totalCapital.toLocaleString()}, 曝險度: ${(
+        exposure * 100
+      ).toFixed(1)}%`,
+    );
+
+    return exposure;
+  }
+
+  /**
+   * 動態倉位大小計算器 (Python風格優化版)
+   */
+  private calculateDynamicPositionSize(
+    confidence: number,
+    currentTotalExposure: number,
+    strategyParams: StrategyParams,
+  ): number {
+    if (!strategyParams.dynamicPositionSize) {
+      // 如果未啟用動態倉位，使用固定邏輯
+      return confidence > 0.8 ? 0.225 : confidence > 0.65 ? 0.15 : 0.105;
+    }
+
+    console.log(
+      `💰 開始計算動態倉位 - 信心度: ${(confidence * 100).toFixed(
+        1,
+      )}%, 當前曝險度: ${(currentTotalExposure * 100).toFixed(1)}%`,
+    );
+
+    // Python風格的基礎倉位計算
+    const basePosition = 0.15; // 15% 基礎倉位
+    let multiplier = 1.0;
+
+    // 根據信心度調整倍數
+    if (confidence > 0.8) {
+      multiplier = 1.5; // 高信心度
+      console.log(`📈 高信心度模式 (>80%)，倍數: ${multiplier}`);
+    } else if (confidence > 0.65) {
+      multiplier = 1.0; // 中等信心度
+      console.log(`📊 中信心度模式 (65-80%)，倍數: ${multiplier}`);
+    } else {
+      multiplier = 0.7; // 低信心度
+      console.log(`📉 低信心度模式 (<65%)，倍數: ${multiplier}`);
+    }
+
+    let suggestedPosition = basePosition * multiplier;
+
+    // Python風格風險控制：當總曝險度過高時減少倉位
+    if (currentTotalExposure > strategyParams.maxTotalExposure) {
+      const riskReduction = 0.5; // 減半
+      suggestedPosition *= riskReduction;
+      console.log(
+        `⚠️ 總曝險度過高 (${(currentTotalExposure * 100).toFixed(1)}% > ${(
+          strategyParams.maxTotalExposure * 100
+        ).toFixed(1)}%)，倉位減半至: ${(suggestedPosition * 100).toFixed(1)}%`,
+      );
+    } else if (currentTotalExposure > 0.6) {
+      // 當曝險度接近限制時，適度減少倉位
+      const riskReduction = 0.75;
+      suggestedPosition *= riskReduction;
+      console.log(
+        `🔶 曝險度偏高 (${(currentTotalExposure * 100).toFixed(
+          1,
+        )}% > 60%)，倉位調整至: ${(suggestedPosition * 100).toFixed(1)}%`,
+      );
+    }
+
+    // 最終限制：不能超過單一持股上限
+    const finalPosition = Math.min(
+      suggestedPosition,
+      strategyParams.maxPositionSize,
+    );
+
+    console.log(
+      `💼 最終倉位決定: ${(finalPosition * 100).toFixed(1)}% (限制: ${(
+        strategyParams.maxPositionSize * 100
+      ).toFixed(1)}%)`,
+    );
+
+    return finalPosition;
   }
 
   /**
@@ -714,12 +1422,14 @@ export class BacktestService {
     initialCapital: number,
     finalCapital: number,
   ): BacktestResults {
-    // const buyTrades = trades.filter((t) => t.action === 'buy');
-    const sellTrades = trades.filter((t) => t.action === 'sell');
+    const sellTrades = trades.filter((t) => t.action === 'SELL');
 
     const profits = sellTrades.map((t) => t.profit || 0);
+    const profitRates = sellTrades.map((t) => t.profitRate || 0);
     const winningTrades = profits.filter((p) => p > 0);
     const losingTrades = profits.filter((p) => p <= 0);
+    const winningRates = profitRates.filter((p) => p > 0);
+    const losingRates = profitRates.filter((p) => p <= 0);
 
     const totalProfit = profits.reduce((sum, p) => sum + p, 0);
     const totalReturn = (finalCapital - initialCapital) / initialCapital;
@@ -730,8 +1440,23 @@ export class BacktestService {
       equityCurve[equityCurve.length - 1]?.date || new Date(),
     );
     const years =
-      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
-    const annualReturn = Math.pow(1 + totalReturn, 1 / years) - 1;
+      (endDate.getTime() - startDate.getTime()) /
+      (1000 * 60 * 60 * 24 * 365.25);
+    const annualReturn =
+      years > 0 ? Math.pow(1 + totalReturn, 1 / years) - 1 : 0;
+
+    // 計算最大回撤
+    let maxDrawdown = 0;
+    let peak = initialCapital;
+    for (const point of equityCurve) {
+      if (point.value > peak) {
+        peak = point.value;
+      }
+      const drawdown = (peak - point.value) / peak;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
+    }
 
     // 計算各股票表現
     const stockPerformance: {
@@ -765,6 +1490,12 @@ export class BacktestService {
       });
     });
 
+    // 計算獲利因子
+    const totalGains = winningTrades.reduce((sum, p) => sum + Math.abs(p), 0);
+    const totalLosses = losingTrades.reduce((sum, p) => sum + Math.abs(p), 0);
+    const profitFactor =
+      totalLosses > 0 ? totalGains / totalLosses : totalGains > 0 ? 999 : 0;
+
     return {
       performance: {
         initialCapital,
@@ -772,6 +1503,7 @@ export class BacktestService {
         totalReturn,
         annualReturn,
         totalProfit,
+        maxDrawdown,
       },
       trades: {
         totalTrades: sellTrades.length,
@@ -780,24 +1512,21 @@ export class BacktestService {
         winRate:
           sellTrades.length > 0 ? winningTrades.length / sellTrades.length : 0,
         avgWin:
-          winningTrades.length > 0
-            ? winningTrades.reduce((sum, p) => sum + p, 0) /
-              winningTrades.length
+          winningRates.length > 0
+            ? winningRates.reduce((sum, p) => sum + p, 0) / winningRates.length
             : 0,
         avgLoss:
-          losingTrades.length > 0
-            ? losingTrades.reduce((sum, p) => sum + p, 0) / losingTrades.length
+          losingRates.length > 0
+            ? losingRates.reduce((sum, p) => sum + p, 0) / losingRates.length
             : 0,
-        maxWin: winningTrades.length > 0 ? Math.max(...winningTrades) : 0,
-        maxLoss: losingTrades.length > 0 ? Math.min(...losingTrades) : 0,
+        maxWin: winningRates.length > 0 ? Math.max(...winningRates) : 0,
+        maxLoss: losingRates.length > 0 ? Math.min(...losingRates) : 0,
         avgHoldingDays:
-          sellTrades.reduce((sum, t) => sum + (t.holdingDays || 0), 0) /
-            sellTrades.length || 0,
-        profitFactor:
-          Math.abs(losingTrades.reduce((sum, p) => sum + p, 0)) > 0
-            ? winningTrades.reduce((sum, p) => sum + p, 0) /
-              Math.abs(losingTrades.reduce((sum, p) => sum + p, 0))
+          sellTrades.length > 0
+            ? sellTrades.reduce((sum, t) => sum + (t.holdingDays || 0), 0) /
+              sellTrades.length
             : 0,
+        profitFactor,
       },
       detailedTrades: trades,
       equityCurve,

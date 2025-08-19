@@ -63,6 +63,7 @@ export class StockListService {
     { code: 'TSE', name: '上市', exchange: 'TWSE' },
     { code: 'OTC', name: '上櫃', exchange: 'TPEx' },
     { code: 'ESB', name: '興櫃一般板', exchange: 'TPEx' },
+    { code: 'TIB', name: '臺灣創新板', exchange: 'TPEx' },
     { code: 'PSB', name: '興櫃戰略新板', exchange: 'TPEx' },
   ];
 
