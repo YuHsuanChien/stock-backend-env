@@ -10,10 +10,18 @@ import {
   SellSignalResult,
 } from './interfaces/backtest.interface';
 
+interface RSIOversoldTracker {
+  isOversold: boolean; // 是否曾經超賣
+  oversoldDate: Date; // 超賣發生日期
+  minRSI: number; // 超賣期間的最低RSI
+  waitingForRecovery: boolean; // 是否等待回升中
+}
+
 @Injectable()
 export class BacktestService {
   @Inject()
   private readonly databaseService: DatabaseService;
+  private rsiTrackers: Record<string, RSIOversoldTracker> = {};
 
   /**
    * 執行回測
@@ -389,6 +397,7 @@ export class BacktestService {
             current,
             previous,
             strategyParams,
+            stock,
           );
 
           if (buyCheck.signal) {
@@ -825,24 +834,25 @@ export class BacktestService {
   }
 
   /**
-   * 檢查買入信號 (修正版 - 與前端邏輯一致)
+   * 檢查買入信號 (正確版本 - 追蹤RSI超賣回升過程)
    */
   private checkBuySignal(
     current: StockData,
     previous: StockData,
     strategyParams: StrategyParams,
+    stock: string, // 新增股票代碼參數
   ): BuySignalResult {
     const dateStr = current.date.toISOString().split('T')[0];
     const isPythonMode = strategyParams.usePythonLogic;
 
     console.log(
-      `🔍 ${dateStr} 開始${isPythonMode ? 'Python階層' : '標準'}決策分析...`,
+      `🔍 ${dateStr} ${stock} 開始${isPythonMode ? 'Python階層' : '標準'}決策分析...`,
     );
 
     // 第一層：數據完整性檢查
     if (!current.rsi || !current.macd || !current.macdSignal) {
       console.log(
-        `🚫 ${dateStr} 數據不足: RSI=${current.rsi}, MACD=${current.macd}, Signal=${current.macdSignal}`,
+        `🚫 ${dateStr} ${stock} 數據不足: RSI=${current.rsi}, MACD=${current.macd}, Signal=${current.macdSignal}`,
       );
       return { signal: false, reason: '數據不足' };
     }
@@ -852,131 +862,187 @@ export class BacktestService {
     const macdSignal = current.macdSignal;
     const volumeRatio = current.volumeRatio || 0;
 
+    // 初始化追蹤器
+    if (!this.rsiTrackers[stock]) {
+      this.rsiTrackers[stock] = {
+        isOversold: false,
+        oversoldDate: new Date(),
+        minRSI: 100,
+        waitingForRecovery: false,
+      };
+    }
+
+    const tracker = this.rsiTrackers[stock];
+
     console.log(
-      `📊 ${dateStr} 技術指標 - RSI: ${rsi.toFixed(2)}, MACD: ${macd.toFixed(
-        4,
-      )}, 量比: ${volumeRatio.toFixed(2)}`,
+      `📊 ${dateStr} ${stock} RSI: ${rsi.toFixed(2)}, 追蹤狀態: ${
+        tracker.waitingForRecovery ? '等待回升中' : '正常監控'
+      }`,
     );
 
-    // 第二層：基礎技術指標篩選（Python風格更嚴格）
-    if (isPythonMode && strategyParams.hierarchicalDecision) {
-      // Python 階層決策：嚴格的條件檢查
+    // 🎯 核心邏輯：RSI 超賣回升追蹤
+    if (rsi < 30) {
+      // 進入或維持超賣狀態
+      if (!tracker.isOversold) {
+        // 首次進入超賣
+        tracker.isOversold = true;
+        tracker.oversoldDate = current.date;
+        tracker.minRSI = rsi;
+        tracker.waitingForRecovery = false;
 
-      // 檢查 1: RSI 超賣條件
-      if (rsi > strategyParams.rsiOversold) {
         console.log(
-          `🚫 ${dateStr} Python模式 - RSI不符合條件: ${rsi.toFixed(2)} > ${
-            strategyParams.rsiOversold
-          }`,
+          `📉 ${dateStr} ${stock} 進入超賣狀態: RSI=${rsi.toFixed(2)}`,
         );
-        return {
-          signal: false,
-          reason: `RSI不符合條件 (Python嚴格模式: >${strategyParams.rsiOversold})`,
-        };
-      }
-
-      // 檢查 2: MACD 黃金交叉
-      if (macd <= macdSignal) {
-        console.log(
-          `🚫 ${dateStr} Python模式 - MACD未黃金交叉: ${macd.toFixed(
-            4,
-          )} <= ${macdSignal.toFixed(4)}`,
-        );
-        return { signal: false, reason: 'MACD未黃金交叉' };
-      }
-
-      // 檢查 3: RSI 回升確認
-      if (!previous || rsi <= (previous.rsi || 0)) {
-        console.log(
-          `🚫 ${dateStr} Python模式 - RSI未回升: ${rsi.toFixed(2)} <= ${
-            previous?.rsi?.toFixed(2) || 'N/A'
-          }`,
-        );
-        return { signal: false, reason: 'RSI未回升' };
-      }
-
-      // 檢查 4: 成交量確認
-      if (volumeRatio < strategyParams.volumeThreshold) {
-        console.log(
-          `🚫 ${dateStr} Python模式 - 成交量不足: ${volumeRatio.toFixed(2)} < ${
-            strategyParams.volumeThreshold
-          }`,
-        );
-        return { signal: false, reason: '成交量不足' };
-      }
-
-      // 檢查 5: K線型態確認
-      if (current.close <= current.open) {
-        console.log(
-          `🚫 ${dateStr} Python模式 - 收黑K線: Close=${current.close} <= Open=${current.open}`,
-        );
-        return { signal: false, reason: '收黑K線' };
-      }
-
-      // 檢查 6: 價格動能確認（Python額外條件）
-      if (
-        strategyParams.enablePriceMomentum &&
-        current.priceMomentum !== undefined
-      ) {
-        if (current.priceMomentum < 0) {
-          console.log(
-            `🚫 ${dateStr} Python模式 - 價格動能為負: ${(
-              current.priceMomentum * 100
-            ).toFixed(2)}%`,
-          );
-          return { signal: false, reason: '價格動能為負' };
+      } else {
+        // 更新最低RSI
+        if (rsi < tracker.minRSI) {
+          tracker.minRSI = rsi;
         }
-      }
-    } else {
-      // 原版較寬鬆的條件檢查
-      if (rsi > strategyParams.rsiOversold) {
         console.log(
-          `🚫 ${dateStr} 標準模式 - RSI不符合條件: ${rsi.toFixed(2)} > ${
-            strategyParams.rsiOversold
-          }`,
+          `📉 ${dateStr} ${stock} 持續超賣: RSI=${rsi.toFixed(2)}, 最低=${tracker.minRSI.toFixed(2)}`,
         );
+      }
+
+      return {
+        signal: false,
+        reason: `RSI超賣中: ${rsi.toFixed(2)}, 等待回升至30以上`,
+      };
+    }
+
+    // RSI >= 30，檢查是否為回升信號
+    if (tracker.isOversold && rsi >= 30) {
+      // 從超賣狀態回升！
+      if (!tracker.waitingForRecovery) {
+        tracker.waitingForRecovery = true;
+        console.log(
+          `📈 ${dateStr} ${stock} RSI回升確認！從最低${tracker.minRSI.toFixed(2)}回升至${rsi.toFixed(2)}`,
+        );
+      }
+
+      // 檢查是否在理想買點區間
+      const upperLimit = isPythonMode ? 40 : strategyParams.rsiOversold; // Python模式40，標準模式35
+
+      if (rsi > upperLimit) {
+        console.log(
+          `🚫 ${dateStr} ${stock} RSI回升過頭: ${rsi.toFixed(2)} > ${upperLimit}，錯過買點`,
+        );
+
+        // 重置追蹤器，等待下一次超賣
+        this.resetRSITracker(stock);
+
         return {
           signal: false,
-          reason: `RSI不符合條件 (>${strategyParams.rsiOversold})`,
+          reason: `RSI回升過頭: ${rsi.toFixed(2)} > ${upperLimit}，錯過買點`,
         };
       }
 
-      if (macd <= macdSignal) {
-        console.log(
-          `🚫 ${dateStr} 標準模式 - MACD未黃金交叉: ${macd.toFixed(
-            4,
-          )} <= ${macdSignal.toFixed(4)}`,
-        );
-        return { signal: false, reason: 'MACD未黃金交叉' };
-      }
+      console.log(
+        `✅ ${dateStr} ${stock} RSI在理想買點區間: ${rsi.toFixed(2)} (30-${upperLimit})`,
+      );
 
-      if (!previous || rsi <= (previous.rsi || 0)) {
-        console.log(
-          `🚫 ${dateStr} 標準模式 - RSI未回升: ${rsi.toFixed(2)} <= ${
-            previous?.rsi?.toFixed(2) || 'N/A'
-          }`,
-        );
-        return { signal: false, reason: 'RSI未回升' };
-      }
+      // 繼續其他技術指標檢查...
+    } else if (!tracker.isOversold) {
+      // 從未超賣過，不符合買入條件
+      console.log(
+        `🚫 ${dateStr} ${stock} RSI=${rsi.toFixed(2)}，但未曾進入超賣狀態`,
+      );
+      return {
+        signal: false,
+        reason: `RSI=${rsi.toFixed(2)}，但未曾進入超賣狀態，等待超賣機會`,
+      };
+    } else {
+      // 曾經超賣但還沒回升到30
+      console.log(
+        `🚫 ${dateStr} ${stock} 等待RSI回升中: ${rsi.toFixed(2)} < 30`,
+      );
+      return {
+        signal: false,
+        reason: `等待RSI從超賣回升: ${rsi.toFixed(2)} < 30`,
+      };
+    }
 
-      if (volumeRatio < strategyParams.volumeThreshold) {
-        console.log(
-          `🚫 ${dateStr} 標準模式 - 成交量不足: ${volumeRatio.toFixed(2)} < ${
-            strategyParams.volumeThreshold
-          }`,
-        );
-        return { signal: false, reason: '成交量不足' };
-      }
+    // 📋 執行到這裡表示：RSI已從超賣回升且在理想區間，繼續其他檢查
 
-      if (current.close <= current.open) {
+    // 第二層：RSI 回升趨勢確認
+    if (!previous || rsi <= (previous.rsi || 0)) {
+      console.log(
+        `🚫 ${dateStr} ${stock} RSI回升力度不足: ${rsi.toFixed(2)} <= ${previous?.rsi?.toFixed(2) || 'N/A'}`,
+      );
+      return { signal: false, reason: 'RSI回升力度不足' };
+    }
+
+    // 第三層：MACD 黃金交叉確認
+    if (macd <= macdSignal) {
+      console.log(
+        `🚫 ${dateStr} ${stock} MACD未黃金交叉: ${macd.toFixed(4)} <= ${macdSignal.toFixed(4)}`,
+      );
+      return { signal: false, reason: 'MACD未黃金交叉' };
+    }
+
+    // MACD 交叉強度檢查（Python模式額外條件）
+    if (isPythonMode) {
+      const macdHistogram = current.macdHistogram || 0;
+      if (macdHistogram <= 0) {
         console.log(
-          `🚫 ${dateStr} 標準模式 - 收黑K線: Close=${current.close} <= Open=${current.open}`,
+          `🚫 ${dateStr} ${stock} Python模式 - MACD柱狀圖未轉正: ${macdHistogram.toFixed(4)}`,
         );
-        return { signal: false, reason: '收黑K線' };
+        return { signal: false, reason: 'MACD柱狀圖未轉正' };
       }
     }
 
-    // 第三層：信心度評估
+    // 第四層：成交量確認
+    if (volumeRatio < strategyParams.volumeThreshold) {
+      console.log(
+        `🚫 ${dateStr} ${stock} 成交量不足: ${volumeRatio.toFixed(2)} < ${strategyParams.volumeThreshold}`,
+      );
+      return { signal: false, reason: '成交量不足' };
+    }
+
+    // 第五層：K線型態確認
+    if (current.close <= current.open) {
+      console.log(
+        `🚫 ${dateStr} ${stock} 收黑K線: Close=${current.close} <= Open=${current.open}`,
+      );
+      return { signal: false, reason: '收黑K線' };
+    }
+
+    // 第六層：價格動能確認（Python額外條件）
+    if (
+      strategyParams.enablePriceMomentum &&
+      current.priceMomentum !== undefined
+    ) {
+      if (isPythonMode && current.priceMomentum < 0) {
+        console.log(
+          `🚫 ${dateStr} ${stock} Python模式 - 價格動能為負: ${(current.priceMomentum * 100).toFixed(2)}%`,
+        );
+        return { signal: false, reason: '價格動能為負' };
+      }
+    }
+
+    // 第七層：均線趨勢確認（可選）
+    if (strategyParams.enableMA60 && current.ma60) {
+      const close = current.close;
+      const ma20 = current.ma20 || 0;
+      const ma60 = current.ma60;
+
+      if (isPythonMode) {
+        if (close < ma60) {
+          console.log(
+            `🚫 ${dateStr} ${stock} Python模式 - 股價低於季線: ${close} < ${ma60.toFixed(2)}`,
+          );
+          return { signal: false, reason: '股價低於季線' };
+        }
+      } else {
+        if (close < ma20) {
+          console.log(
+            `🚫 ${dateStr} ${stock} 標準模式 - 股價低於月線: ${close} < ${ma20.toFixed(2)}`,
+          );
+          return { signal: false, reason: '股價低於月線' };
+        }
+      }
+    }
+
+    // 第八層：信心度評估
     const confidence = this.calculateConfidence(
       current,
       strategyParams,
@@ -986,7 +1052,7 @@ export class BacktestService {
 
     if (confidence < confidenceThreshold) {
       console.log(
-        `🚫 ${dateStr} 信心度不足: ${(confidence * 100).toFixed(1)}% < ${(
+        `🚫 ${dateStr} ${stock} 信心度不足: ${(confidence * 100).toFixed(1)}% < ${(
           confidenceThreshold * 100
         ).toFixed(1)}%`,
       );
@@ -998,19 +1064,44 @@ export class BacktestService {
       };
     }
 
-    // 通過所有檢查！
-    console.log(
-      `✅ ${dateStr} ${
-        isPythonMode ? 'Python階層決策' : '標準決策'
-      }通過！信心度: ${(confidence * 100).toFixed(1)}%`,
+    // 🎉 通過所有檢查！產生買入信號並重置追蹤器
+    const recoveryDays = Math.floor(
+      (current.date.getTime() - tracker.oversoldDate.getTime()) /
+        (1000 * 60 * 60 * 24),
     );
+
+    console.log(
+      `✅ ${dateStr} ${stock} 買入信號確認！
+    RSI從超賣${tracker.minRSI.toFixed(2)}回升至${rsi.toFixed(2)}
+    回升耗時: ${recoveryDays}天
+    MACD: ${macd.toFixed(4)} > ${macdSignal.toFixed(4)}
+    量比: ${volumeRatio.toFixed(2)}
+    信心度: ${(confidence * 100).toFixed(1)}%`,
+    );
+
+    // 重置追蹤器，準備下一輪
+    this.resetRSITracker(stock);
+
     return {
       signal: true,
-      reason: `${isPythonMode ? 'Python階層決策' : '標準'}買進訊號，信心度: ${(
+      reason: `RSI從超賣${tracker.minRSI.toFixed(2)}回升至${rsi.toFixed(2)}(${recoveryDays}天)，信心度: ${(
         confidence * 100
       ).toFixed(1)}%`,
       confidence,
     };
+  }
+
+  /**
+   * 重置 RSI 追蹤器
+   */
+  private resetRSITracker(stock: string): void {
+    this.rsiTrackers[stock] = {
+      isOversold: false,
+      oversoldDate: new Date(),
+      minRSI: 100,
+      waitingForRecovery: false,
+    };
+    console.log(`🔄 ${stock} RSI追蹤器已重置`);
   }
 
   /**
@@ -1116,6 +1207,7 @@ export class BacktestService {
     const ma5 = current.ma5 || 0;
     const ma20 = current.ma20 || 0;
     const ma60 = current.ma60 || 0;
+    console.log('current', current);
 
     if (strategyParams.usePythonLogic) {
       // Python 風格：更注重多頭排列
@@ -1267,6 +1359,11 @@ export class BacktestService {
 
   /**
    * 計算當前總曝險度
+   * 根據持倉和當前資本計算
+   * @param positions 持倉資訊
+   * @param currentCapital 當前資本
+   * @param allStockData 所有股票數據
+   * @param currentDateStr 當前日期字串
    */
   private calculateCurrentExposure(
     positions: Record<string, Position>,
@@ -1302,6 +1399,7 @@ export class BacktestService {
 
   /**
    * 動態倉位大小計算器 (Python風格優化版)
+   * 根據信心度和當前曝險度動態調整
    */
   private calculateDynamicPositionSize(
     confidence: number,
