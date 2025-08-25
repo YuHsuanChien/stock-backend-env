@@ -8,6 +8,9 @@ import {
 } from 'class-validator';
 
 export class StrategyParamsDto {
+  @IsString()
+  strategy: string;
+
   @IsNumber()
   rsiPeriod: number;
 

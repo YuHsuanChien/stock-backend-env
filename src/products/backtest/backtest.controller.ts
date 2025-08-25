@@ -16,47 +16,26 @@ export class BacktestController {
    * 執行回測
    */
   @Post('run')
-  async runBacktest(@Body() request: BacktestRequestDto) {
+  async runRsiBacktest(@Body() request: BacktestRequestDto) {
     try {
-      // 設置預設策略參數
-      const defaultStrategyParams = {
-        rsiPeriod: 14,
-        rsiOversold: 35,
-        macdFast: 12,
-        macdSlow: 26,
-        macdSignal: 9,
-        volumeThreshold: 1.5,
-        volumeLimit: 1000, // 新增：基本成交量門檻 1000張
-        maxPositionSize: 0.25,
-        stopLoss: 0.06,
-        stopProfit: 0.12,
-        confidenceThreshold: 0.6,
-        enableTrailingStop: true,
-        trailingStopPercent: 0.05,
-        trailingActivatePercent: 0.03,
-        enableATRStop: true,
-        atrPeriod: 14,
-        atrMultiplier: 2.0,
-        minHoldingDays: 5,
-        enablePriceMomentum: true,
-        priceMomentumPeriod: 5,
-        priceMomentumThreshold: 0.03,
-        enableMA60: false,
-        maxTotalExposure: 0.75,
-        usePythonLogic: true,
-        hierarchicalDecision: true,
-        dynamicPositionSize: true,
-      };
+      const strategyParams = request.strategyParams;
 
-      const strategyParams = request.strategyParams || defaultStrategyParams;
-
-      const result = await this.backtestService.runBacktest(
-        request.stocks,
-        request.startDate,
-        request.endDate,
-        request.initialCapital,
-        strategyParams,
-      );
+      const result =
+        request.strategyParams!.strategy == 'rsi_macd'
+          ? await this.backtestService.runRsiBacktest(
+              request.stocks,
+              request.startDate,
+              request.endDate,
+              request.initialCapital,
+              strategyParams!,
+            )
+          : await this.backtestService.runWBacktest(
+              request.stocks,
+              request.startDate,
+              request.endDate,
+              request.initialCapital,
+              strategyParams!,
+            );
 
       return {
         statusCode: 200,
