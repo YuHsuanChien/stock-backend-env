@@ -107,7 +107,8 @@ export interface BacktestResults {
 /**
  * 策略參數介面
  */
-export interface StrategyParams {
+export interface RsiStrategyParams {
+  strategy: string;
   rsiPeriod: number;
   rsiOversold: number;
   macdFast: number;
@@ -134,6 +135,10 @@ export interface StrategyParams {
   usePythonLogic: boolean;
   hierarchicalDecision: boolean;
   dynamicPositionSize: boolean;
+}
+
+export interface WStrategyParams {
+  strategy: string;
 }
 
 /**

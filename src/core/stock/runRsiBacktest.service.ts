@@ -3,7 +3,7 @@ import { DatabaseService } from '@database/database.service';
 import {
   StockData,
   BacktestResults,
-  StrategyParams,
+  RsiStrategyParams,
   TradeResult,
   Position,
   BuySignalResult,
@@ -33,7 +33,7 @@ export class RunRsiBacktestService {
     startDate: string,
     endDate: string,
     initialCapital: number,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
   ): Promise<BacktestResults> {
     console.log('🔥 開始執行後端回測...');
 
@@ -656,7 +656,7 @@ export class RunRsiBacktestService {
    */
   private calculateIndicators(
     data: StockData[],
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
   ): StockData[] {
     console.log(`🔍 開始計算技術指標，數據筆數: ${data.length}`);
     const result = [...data];
@@ -839,7 +839,7 @@ export class RunRsiBacktestService {
   private checkBuySignal(
     current: StockData,
     previous: StockData,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
     stock: string, // 新增股票代碼參數
   ): BuySignalResult {
     const dateStr = current.date.toISOString().split('T')[0];
@@ -1126,7 +1126,7 @@ export class RunRsiBacktestService {
    */
   private calculateConfidence(
     current: StockData,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
     previous?: StockData,
   ): number {
     // Python 風格：較低的起始信心度，透過嚴格評估提升
@@ -1280,7 +1280,7 @@ export class RunRsiBacktestService {
     current: StockData,
     position: Position,
     holdingDays: number,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
   ): SellSignalResult {
     const currentPrice = current.close;
     const entryPrice = position.entryPrice;
@@ -1470,7 +1470,7 @@ export class RunRsiBacktestService {
   private calculateDynamicPositionSize(
     confidence: number,
     currentTotalExposure: number,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
   ): number {
     if (!strategyParams.dynamicPositionSize) {
       // 如果未啟用動態倉位，使用固定邏輯

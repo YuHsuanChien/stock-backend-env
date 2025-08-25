@@ -2,7 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RunRsiBacktestService } from '../../core/stock/runRsiBacktest.service';
 import {
   BacktestResults,
-  StrategyParams,
+  RsiStrategyParams,
+  WStrategyParams,
 } from '../../interfaces/backtest.interface';
 
 @Injectable()
@@ -15,7 +16,7 @@ export class BacktestService {
     startDate: string,
     endDate: string,
     initialCapital: number,
-    strategyParams: StrategyParams,
+    strategyParams: RsiStrategyParams,
   ): Promise<BacktestResults> {
     return await this.runRsi.Backtest(
       stocks,
@@ -31,9 +32,8 @@ export class BacktestService {
     startDate: string,
     endDate: string,
     initialCapital: number,
-    strategyParams: StrategyParams,
+    strategyParams: WStrategyParams,
   ): Promise<BacktestResults> {
-    console.log(11111);
     console.log(stocks, startDate, endDate, initialCapital, strategyParams);
     await Promise.resolve();
     return {

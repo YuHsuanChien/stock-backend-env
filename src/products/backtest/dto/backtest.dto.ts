@@ -5,94 +5,127 @@ import {
   IsArray,
   IsBoolean,
   IsOptional,
+  IsIn,
+  ValidateIf,
 } from 'class-validator';
 
-export class RsiStrategyParamsDto {
+export class StrategyParamsDto {
   @IsString()
-  strategy: string;
+  @IsIn(['rsi_macd', 'w'], { message: '策略类型必须是 rsi_macd 或 w' })
+  strategy: 'rsi_macd' | 'w';
 
-  @IsNumber()
-  rsiPeriod: number;
+  // === RSI_MACD 策略专用参数 ===
+  // 只有当 strategy 为 'rsi_macd' 时才验证这些字段
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'RSI周期必须是数字' })
+  rsiPeriod?: number;
 
-  @IsNumber()
-  rsiOversold: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'RSI超卖线必须是数字' })
+  rsiOversold?: number;
 
-  @IsNumber()
-  macdFast: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'MACD快线必须是数字' })
+  macdFast?: number;
 
-  @IsNumber()
-  macdSlow: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'MACD慢线必须是数字' })
+  macdSlow?: number;
 
-  @IsNumber()
-  macdSignal: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'MACD信号线必须是数字' })
+  macdSignal?: number;
 
-  @IsNumber()
-  volumeThreshold: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '成交量阈值必须是数字' })
+  volumeThreshold?: number;
 
-  @IsNumber()
-  volumeLimit: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '成交量限制必须是数字' })
+  volumeLimit?: number;
 
-  @IsNumber()
-  maxPositionSize: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '最大仓位必须是数字' })
+  maxPositionSize?: number;
 
-  @IsNumber()
-  stopLoss: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '止损比例必须是数字' })
+  stopLoss?: number;
 
-  @IsNumber()
-  stopProfit: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '止盈比例必须是数字' })
+  stopProfit?: number;
 
-  @IsNumber()
-  confidenceThreshold: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '信心度阈值必须是数字' })
+  confidenceThreshold?: number;
 
-  @IsBoolean()
-  enableTrailingStop: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: '追踪止盈开关必须是布尔值' })
+  enableTrailingStop?: boolean;
 
-  @IsNumber()
-  trailingStopPercent: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '追踪止盈比例必须是数字' })
+  trailingStopPercent?: number;
 
-  @IsNumber()
-  trailingActivatePercent: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '追踪激活比例必须是数字' })
+  trailingActivatePercent?: number;
 
-  @IsBoolean()
-  enableATRStop: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: 'ATR止损开关必须是布尔值' })
+  enableATRStop?: boolean;
 
-  @IsNumber()
-  atrPeriod: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'ATR周期必须是数字' })
+  atrPeriod?: number;
 
-  @IsNumber()
-  atrMultiplier: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: 'ATR倍数必须是数字' })
+  atrMultiplier?: number;
 
-  @IsNumber()
-  minHoldingDays: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '最小持有天数必须是数字' })
+  minHoldingDays?: number;
 
-  @IsBoolean()
-  enablePriceMomentum: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: '价格动能开关必须是布尔值' })
+  enablePriceMomentum?: boolean;
 
-  @IsNumber()
-  priceMomentumPeriod: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '价格动能周期必须是数字' })
+  priceMomentumPeriod?: number;
 
-  @IsNumber()
-  priceMomentumThreshold: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '价格动能阈值必须是数字' })
+  priceMomentumThreshold?: number;
 
-  @IsBoolean()
-  enableMA60: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: 'MA60开关必须是布尔值' })
+  enableMA60?: boolean;
 
-  @IsNumber()
-  maxTotalExposure: number;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsNumber({}, { message: '最大总曝险度必须是数字' })
+  maxTotalExposure?: number;
 
-  @IsBoolean()
-  usePythonLogic: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: 'Python逻辑开关必须是布尔值' })
+  usePythonLogic?: boolean;
 
-  @IsBoolean()
-  hierarchicalDecision: boolean;
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: '层级决策开关必须是布尔值' })
+  hierarchicalDecision?: boolean;
 
-  @IsBoolean()
-  dynamicPositionSize: boolean;
-}
+  @ValidateIf((o) => o.strategy === 'rsi_macd')
+  @IsBoolean({ message: '动态仓位开关必须是布尔值' })
+  dynamicPositionSize?: boolean;
 
-export class WStrategyParamsDto {
-  @IsString()
-  strategy: string;
+  // === W 策略专用参数 ===
+  // 只有当 strategy 为 'w' 时才验证这些字段
+  // @ValidateIf((o) => o.strategy === 'w')
+  // @IsOptional()
+  // @IsString({ message: 'W策略参数1必须是字符串' })
+  // wCustomParam1?: string;
 }
 
 export class BacktestRequestDto {
@@ -110,5 +143,5 @@ export class BacktestRequestDto {
   initialCapital: number;
 
   @IsOptional()
-  strategyParams?: RsiStrategyParamsDto | WStrategyParamsDto;
+  strategyParams?: StrategyParamsDto;
 }
