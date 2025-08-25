@@ -27,6 +27,9 @@ export class StrategyParamsDto {
   volumeThreshold: number;
 
   @IsNumber()
+  volumeLimit: number;
+
+  @IsNumber()
   maxPositionSize: number;
 
   @IsNumber()

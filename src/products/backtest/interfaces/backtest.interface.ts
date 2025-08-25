@@ -114,6 +114,7 @@ export interface StrategyParams {
   macdSlow: number;
   macdSignal: number;
   volumeThreshold: number;
+  volumeLimit: number;
   maxPositionSize: number;
   stopLoss: number;
   stopProfit: number;

@@ -26,6 +26,7 @@ export class BacktestController {
         macdSlow: 26,
         macdSignal: 9,
         volumeThreshold: 1.5,
+        volumeLimit: 1000, // 新增：基本成交量門檻 1000張
         maxPositionSize: 0.25,
         stopLoss: 0.06,
         stopProfit: 0.12,

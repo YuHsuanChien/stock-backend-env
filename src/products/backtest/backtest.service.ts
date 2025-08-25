@@ -861,6 +861,23 @@ export class BacktestService {
     const macd = current.macd;
     const macdSignal = current.macdSignal;
     const volumeRatio = current.volumeRatio || 0;
+    const currentVolume = current.volume; // 當日成交量 (股)
+
+    // 🆕 第一.5層：基本成交量檢查 (在 RSI 分析之前先過濾)
+    const volumeInLots = currentVolume / 1000; // 轉換為張數 (1張 = 1000股)
+    if (volumeInLots < strategyParams.volumeLimit) {
+      console.log(
+        `🚫 ${dateStr} ${stock} 成交量過低: ${volumeInLots.toFixed(0)}張 < ${strategyParams.volumeLimit}張`,
+      );
+      return {
+        signal: false,
+        reason: `成交量過低: ${volumeInLots.toFixed(0)}張 < ${strategyParams.volumeLimit}張`,
+      };
+    }
+
+    console.log(
+      `✅ ${dateStr} ${stock} 成交量符合要求: ${volumeInLots.toFixed(0)}張 >= ${strategyParams.volumeLimit}張`,
+    );
 
     // 初始化追蹤器
     if (!this.rsiTrackers[stock]) {
@@ -1268,10 +1285,71 @@ export class BacktestService {
     const currentPrice = current.close;
     const entryPrice = position.entryPrice;
     const profitRate = (currentPrice - entryPrice) / entryPrice;
+    const dateStr = current.date.toISOString().split('T')[0];
 
-    // 更新進場後最高價 (追蹤停利用)
-    if (currentPrice > position.highPriceSinceEntry) {
-      position.highPriceSinceEntry = currentPrice;
+    // 🔧 更精確的持有天數計算
+    const preciseHoldingDays = Math.ceil(
+      (current.date.getTime() - position.entryDate.getTime()) /
+        (1000 * 60 * 60 * 24),
+    );
+
+    console.log(`🔍 後端 ${dateStr} 持有天數檢查: 
+    - 傳入 holdingDays: ${holdingDays}
+    - 精確 preciseHoldingDays: ${preciseHoldingDays}
+    - 保護期設定: ${strategyParams.minHoldingDays} 天`);
+
+    // 🛡️ 【最高優先級】持有天數保護 - 策略的核心邏輯
+    if (preciseHoldingDays <= strategyParams.minHoldingDays) {
+      console.log(
+        `🛡️ 後端 ${dateStr} 保護期內 (第${preciseHoldingDays}/${strategyParams.minHoldingDays}天)，當前獲利: ${(profitRate * 100).toFixed(2)}%`,
+      );
+
+      // 災難性虧損閾值 (stopLoss * 2.0)
+      const catastrophicLoss = -strategyParams.stopLoss * 2.0;
+
+      if (profitRate <= catastrophicLoss) {
+        console.log(
+          `🚨 後端 ${dateStr} 保護期內災難性虧損: ${(profitRate * 100).toFixed(2)}% <= ${(catastrophicLoss * 100).toFixed(1)}%`,
+        );
+        return {
+          signal: true,
+          reason: `保護期內災難性虧損出場 (第${preciseHoldingDays}天)，虧損: ${(profitRate * 100).toFixed(2)}%`,
+        };
+      }
+
+      // 跌停板風險保護
+      if (profitRate <= -0.095) {
+        console.log(
+          `🚨 後端 ${dateStr} 保護期內跌停風險: ${(profitRate * 100).toFixed(2)}%`,
+        );
+        return {
+          signal: true,
+          reason: `保護期內跌停風險出場 (第${preciseHoldingDays}天)，虧損: ${(profitRate * 100).toFixed(2)}%`,
+        };
+      }
+
+      // 🛡️ 核心保護：即使達到基礎停利條件，也要堅持到保護期結束
+      if (profitRate >= strategyParams.stopProfit) {
+        console.log(
+          `🛡️ 後端 ${dateStr} 保護期內達到停利條件 ${(profitRate * 100).toFixed(2)}% - 但策略保護，繼續持有`,
+        );
+      }
+
+      // 保護期內絕對不出場的原則
+      return {
+        signal: false,
+        reason: `保護期內策略保護 (第${preciseHoldingDays}/${strategyParams.minHoldingDays}天)`,
+      };
+    }
+
+    // ✅ 保護期結束，執行正常賣出邏輯
+    console.log(
+      `✅ 後端 ${dateStr} 保護期已過 (第${preciseHoldingDays}天)，執行正常賣出檢查`,
+    );
+
+    // 更新進場後最高價 (使用當日最高價)
+    if (current.high > position.highPriceSinceEntry) {
+      position.highPriceSinceEntry = current.high;
     }
 
     // 高優先級: 追蹤停利機制
@@ -1279,7 +1357,6 @@ export class BacktestService {
       const profitSinceEntry =
         (position.highPriceSinceEntry - entryPrice) / entryPrice;
 
-      // 只有獲利超過啟動門檻才啟用追蹤停利
       if (profitSinceEntry >= strategyParams.trailingActivatePercent) {
         const trailingStopPrice =
           position.highPriceSinceEntry *
@@ -1289,11 +1366,7 @@ export class BacktestService {
         if (currentPrice <= trailingStopPrice) {
           return {
             signal: true,
-            reason: `追蹤停利出場，最高點回落: ${(
-              strategyParams.trailingStopPercent * 100
-            ).toFixed(1)}%，最高獲利: ${(profitSinceEntry * 100).toFixed(
-              2,
-            )}%，當前獲利: ${(profitRate * 100).toFixed(2)}%`,
+            reason: `追蹤停利出場，最高點回落: ${(strategyParams.trailingStopPercent * 100).toFixed(1)}%，最高獲利: ${(profitSinceEntry * 100).toFixed(2)}%`,
           };
         }
       }
@@ -1309,8 +1382,11 @@ export class BacktestService {
       }
     }
 
-    // 基礎停利停損
+    // 基礎停利停損 (保護期後才生效)
     if (profitRate >= strategyParams.stopProfit) {
+      console.log(
+        `🔴 後端 ${dateStr} 基礎停利觸發: ${(profitRate * 100).toFixed(2)}%`,
+      );
       return {
         signal: true,
         reason: `固定停利出場，獲利: ${(profitRate * 100).toFixed(2)}%`,
@@ -1318,26 +1394,16 @@ export class BacktestService {
     }
 
     if (profitRate <= -strategyParams.stopLoss) {
+      console.log(
+        `🔴 後端 ${dateStr} 基礎停損觸發: ${(profitRate * 100).toFixed(2)}%`,
+      );
       return {
         signal: true,
         reason: `固定停損出場，虧損: ${(profitRate * 100).toFixed(2)}%`,
       };
     }
 
-    // 中優先級: 持有天數保護 (避免剛進場就被技術指標洗出)
-    if (holdingDays <= strategyParams.minHoldingDays) {
-      // 在保護期內，只允許重大虧損出場
-      if (profitRate <= -strategyParams.stopLoss * 1.5) {
-        return {
-          signal: true,
-          reason: `保護期內重大虧損出場，虧損: ${(profitRate * 100).toFixed(2)}%`,
-        };
-      }
-      // 其他情況不出場
-      return { signal: false, reason: '' };
-    }
-
-    // 技術指標出場 (保護期後才生效)
+    // 技術指標出場
     if ((current.rsi || 0) > 70) {
       return { signal: true, reason: 'RSI超買出場' };
     }
@@ -1350,7 +1416,7 @@ export class BacktestService {
     }
 
     // 長期持有出場
-    if (holdingDays > 30) {
+    if (preciseHoldingDays > 30) {
       return { signal: true, reason: '持有超過30天出場' };
     }
 
