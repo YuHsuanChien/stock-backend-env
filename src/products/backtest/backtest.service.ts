@@ -33,6 +33,7 @@ export class BacktestService {
     initialCapital: number,
     strategyParams: StrategyParams,
   ): Promise<BacktestResults> {
+    console.log(11111);
     console.log(stocks, startDate, endDate, initialCapital, strategyParams);
     await Promise.resolve();
     return {

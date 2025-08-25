@@ -7,7 +7,7 @@ import {
   IsOptional,
 } from 'class-validator';
 
-export class StrategyParamsDto {
+export class RsiStrategyParamsDto {
   @IsString()
   strategy: string;
 
@@ -90,6 +90,11 @@ export class StrategyParamsDto {
   dynamicPositionSize: boolean;
 }
 
+export class WStrategyParamsDto {
+  @IsString()
+  strategy: string;
+}
+
 export class BacktestRequestDto {
   @IsArray()
   @IsString({ each: true })
@@ -105,5 +110,5 @@ export class BacktestRequestDto {
   initialCapital: number;
 
   @IsOptional()
-  strategyParams?: StrategyParamsDto;
+  strategyParams?: RsiStrategyParamsDto | WStrategyParamsDto;
 }
