@@ -111,11 +111,11 @@ export class BacktestController {
         hierarchicalDecision: params.hierarchicalDecision ?? false,
         dynamicPositionSize: params.dynamicPositionSize ?? false,
       };
-    } else if (params.strategy === 'w') {
-      // 為 W 策略設置默認值（根據需要添加）
+    } else if (params.strategy === 'w_strategy') {
+      // 為 w_strategy 策略設置默認值（根據需要添加）
       return {
-        strategy: 'w' as const,
-        // 添加 W 策略的默認參數
+        strategy: 'w_strategy' as const,
+        // 添加 w_strategy 策略的默認參數
       };
     }
 

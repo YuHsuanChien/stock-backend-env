@@ -11,8 +11,8 @@ import {
 
 export class StrategyParamsDto {
   @IsString()
-  @IsIn(['rsi_macd', 'w'], { message: '策略类型必须是 rsi_macd 或 w' })
-  strategy: 'rsi_macd' | 'w';
+  @IsIn(['rsi_macd', 'w_strategy'], { message: '策略类型必须是 rsi_macd 或 w' })
+  strategy: 'rsi_macd' | 'w_strategy';
 
   // === RSI_MACD 策略专用参数 ===
   // 只有当 strategy 为 'rsi_macd' 时才验证这些字段
@@ -121,11 +121,11 @@ export class StrategyParamsDto {
   dynamicPositionSize?: boolean;
 
   // === W 策略专用参数 ===
-  // 只有当 strategy 为 'w' 时才验证这些字段
-  // @ValidateIf((o) => o.strategy === 'w')
-  // @IsOptional()
-  // @IsString({ message: 'W策略参数1必须是字符串' })
-  // wCustomParam1?: string;
+  // 只有当 strategy 为 'w_strategy' 时才验证这些字段
+  @ValidateIf((o) => o.strategy === 'w_strategy')
+  @IsOptional()
+  @IsString({ message: 'W策略参数1必须是字符串' })
+  wCustomParam1?: string;
 }
 
 export class BacktestRequestDto {
